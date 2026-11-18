@@ -3,9 +3,10 @@
 import * as Transport from "./transport.js";
 export { serveWorker } from "./transport.js";
 
+import { Project } from "./projects.js";
+import * as Projects from "./projects.js";
 import { createRoot } from "react-dom/client";
 import {
-  Scene,
   designDeserialize_deserialize,
   designSerialize_serialize,
   documentDeserialize_deserialize,
@@ -14,6 +15,7 @@ import {
   sceneSerialize_serialize,
 } from "../../core/src/scene.js";
 import * as Browser from "./browser.js";
+import * as Dashboard from "./dashboard.jsx";
 import * as View from "./view.jsx";
 import * as Webmcp from "./webmcp.js";
 import {
@@ -32,7 +34,7 @@ let root;
 const editor = {
   document: { revision: 0n },
   server: false,
-  mockup: false,
+  project: { id: "", title: "" },
   busy: false,
   fieldsVersion: 0,
   status: "",
@@ -57,22 +59,36 @@ const Editor = {
       return result$1;
     }
     const body = result$1._0;
-    const result$2 = Browser.saveDraft(Editor.storageKey(editor), body);
+    const result$2 = Browser.saveDraft(Project.storageKey(editor.project, editor.server), body);
     return result$2.TAG === "Err" ? { TAG: "Err", _0: message(result$2._0) } : result$2;
-  },
-
-  storageKey(editor) {
-    return editor.mockup
-      ? "agent-pixel:web-app:v1"
-      : editor.server
-        ? "agent-pixel:poster:v1:server"
-        : "agent-pixel:poster:v1";
   },
 };
 
 export function mount() {
   const node = $unwrap(window.document.getElementById("root"), "Editor root");
-  root = createRoot(node);
+  const root$1 = createRoot(node);
+  const value = Projects.route();
+  if (value == null) {
+    root$1.render(Dashboard.home());
+    return;
+  }
+  const id = value[0];
+  const server = value[1];
+  const [catalog] = Projects.list();
+  const project = catalog.find((project) => project.id === id);
+  if (project == null) {
+    root$1.render(Dashboard.missing());
+    return;
+  }
+  $withBorrowMut(
+    editor,
+    (editor) => {
+      editor.project = project;
+      editor.server = server;
+    },
+    true,
+  );
+  root = root$1;
   status("Opening document…");
   (async () => {
     const value = await start();
@@ -101,7 +117,7 @@ export function status(message) {
   render();
 }
 
-function message(error) {
+export function message(error) {
   return error.message;
 }
 
@@ -135,26 +151,8 @@ async function fetchDocument(body) {
 }
 
 async function start() {
-  const mockup = Browser.workspaceQuery("design");
-  const server = !mockup && Browser.workspaceQuery("server");
-  $withBorrowMut(
-    editor,
-    (editor) => {
-      editor.server = server;
-      editor.mockup = mockup;
-    },
-    true,
-  );
-  const key = $withBorrow(editor, Editor.storageKey, true);
-  const result$1 = Browser.loadDraft(key);
-  const result$2 = result$1.TAG === "Err" ? { TAG: "Err", _0: message(result$1._0) } : result$1;
-  function then(value) {
-    const option = value != null ? $fromJson(value, documentDeserialize_deserialize) : undefined;
-    const result =
-      option == null ? { TAG: "Ok" } : option.TAG === "Ok" ? { TAG: "Ok", _0: option._0 } : option;
-    return result.TAG === "Err" ? { TAG: "Err", _0: $displayJsonError(result._0) } : result;
-  }
-  const local = result$2.TAG === "Ok" ? then(result$2._0) : result$2;
+  const [project, server] = $withBorrow(editor, (editor) => [editor.project, editor.server], true);
+  const local = Project.load(project, server);
   let tmp;
   if (local.TAG === "Ok") {
     if (local._0 != null) {
@@ -173,27 +171,18 @@ async function start() {
   }
   const saved = tmp[0];
   let warning = tmp[1];
+  const scene = saved.scene ?? Project.initialScene(project);
+  const value = await restore(scene);
   let design;
-  if (mockup) {
-    const result = await restore(Scene.blank());
-    if (result.TAG === "Err") {
-      return result;
-    }
-    design = result._0;
+  if (value.TAG === "Ok") {
+    design = value._0;
   } else {
-    const result = await request("read", "null");
+    warning = value._0;
+    const result = await restore(Project.initialScene(project));
     if (result.TAG === "Err") {
       return result;
     }
     design = result._0;
-  }
-  if (saved.scene != null) {
-    const value = await restore(saved.scene);
-    if (value.TAG === "Ok") {
-      design = value._0;
-    } else {
-      warning = value._0;
-    }
   }
   const captured = design.scene;
   $withBorrowMut(
@@ -370,7 +359,7 @@ async function saveServer() {
     (editor) => {
       editor.document.revision = saved.revision;
       if ($eq(editor.document.scene, saved.scene)) {
-        const result = Browser.saveDraft(Editor.storageKey(editor));
+        const result = Browser.saveDraft(Project.storageKey(editor.project, editor.server));
         const result$1 = result.TAG === "Err" ? { TAG: "Err", _0: message(result._0) } : result;
         if (result$1.TAG === "Err") {
           return result$1;
@@ -413,7 +402,7 @@ async function loadServer() {
     (editor) => {
       Editor.replaceScene(editor, captured);
       editor.document.revision = saved.revision;
-      const result = Browser.saveDraft(Editor.storageKey(editor));
+      const result = Browser.saveDraft(Project.storageKey(editor.project, editor.server));
       const result$1 = result.TAG === "Err" ? { TAG: "Err", _0: message(result._0) } : result;
       if (result$1.TAG === "Err") {
         return result$1;

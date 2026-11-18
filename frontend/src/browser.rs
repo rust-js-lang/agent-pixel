@@ -11,6 +11,11 @@ pub fn workspace_query(name: &str) -> bool {
     url_search_params::new(Some(&search)).has(name, None)
 }
 
+pub fn query_value(name: &str) -> Option<String> {
+    let search = window_global::location().search();
+    url_search_params::new(Some(&search)).get(name)
+}
+
 pub fn load_draft(key: &str) -> Result<Option<String>, &'static JsError> {
     Ok(window_global::local_storage()?.get_item(key))
 }

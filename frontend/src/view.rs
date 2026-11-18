@@ -108,10 +108,8 @@ fn end_drag(event: &PointerEvent<HTMLButtonElement>, commit: bool) {
     }
 }
 
-fn shape(layer: &Layer) -> JSX::Element {
-    let captured = layer.clone();
-    let id = layer.id.clone();
-    let styles = CSSProperties::new()
+fn layer_style(layer: &Layer) -> CSSProperties {
+    CSSProperties::new()
         .left(percent(layer.x, BOARD_WIDTH))
         .top(percent(layer.y, BOARD_HEIGHT))
         .width(percent(layer.width, BOARD_WIDTH))
@@ -125,7 +123,22 @@ fn shape(layer: &Layer) -> JSX::Element {
         .color(layer.fill.clone())
         .font_size(layer.font_size.map_or_else(String::new, |size| {
             format!("{}cqw", f64::from(size) / f64::from(BOARD_WIDTH) * 100.0)
-        }));
+        }))
+}
+
+pub fn preview_layer(layer: &Layer) -> JSX::Element {
+    let class = if layer.kind == "text" {
+        "preview-layer preview-text"
+    } else {
+        "preview-layer"
+    };
+    jsx! { <div key={layer.id.clone()} className={class} style={layer_style(layer)}>{layer.text.clone()}</div> }
+}
+
+fn shape(layer: &Layer) -> JSX::Element {
+    let captured = layer.clone();
+    let id = layer.id.clone();
+    let styles = layer_style(layer);
     let class = if layer.kind == "text" {
         "shape text-layer"
     } else {
@@ -244,32 +257,29 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
         .iter()
         .find(|layer| Some(layer.id.as_str()) == selected)
         .map(|layer| inspector(layer, editor.fields_version));
-    let document_title = if editor.mockup {
-        "Web app mockup"
-    } else {
-        "Orbit study"
-    };
+    let document_title = editor.project.title.as_str();
+    let poster = editor.project.is_poster();
     let disabled = editor.busy || editor.document.scene.is_none();
     jsx! {
         <>
             <header>
                 <b className="brand"><i>"▦"</i>" Agent Pixel"</b>
                 <span className="crumb">"Workspace / "<strong>{document_title}</strong></span>
-                {if editor.mockup { jsx! { <a href="./">"Orbit study"</a> } } else { jsx! { <a href="?design">"Web app mockup"</a> } }}
+                <a href="./">"← Projects"</a>
                 <a href="https://github.com/rust-js-lang/agent-pixel/blob/main/DESIGN.md">"Design doc ↗"</a>
             </header>
             <main>
                 <aside>
                     <div className="eyebrow">"DOCUMENT"</div><h2>{document_title}</h2>
-                    <p>{if editor.mockup { "Mobile artboard" } else { "Poster composition" }}</p><hr /><h3>"Layers"</h3><div id="layers">{layer_list}</div>
+                    <p>{if !poster { "Mobile artboard" } else { "Poster composition" }}</p><hr /><h3>"Layers"</h3><div id="layers">{layer_list}</div>
                 </aside>
                 <section className="workspace" aria-label="Canvas">
                     <div className="sheet">
                         <div className="legend">"ARTBOARD 01" <span>{format!("{BOARD_WIDTH} × {BOARD_HEIGHT}")}</span></div>
-                        <div id="art" className={if editor.mockup { "mockup" } else { "poster" }}>
-                            {(!editor.mockup).then(|| jsx! { <div className="imprint">"FORM STUDIES" <span>"SERIES 01 / 03"</span></div> })}
+                        <div id="art" className={if !poster { "mockup" } else { "poster" }}>
+                            {(poster).then(|| jsx! { <div className="imprint">"FORM STUDIES" <span>"SERIES 01 / 03"</span></div> })}
                             <div id="shapes">{shape_list}</div>
-                            {(!editor.mockup).then(|| jsx! { <div className="caption"><b>"Orbit study."</b><small>"KINETIC FORMS" <span>"FIG. 01"</span></small></div> })}
+                            {(poster).then(|| jsx! { <div className="caption"><b>"Orbit study."</b><small>"KINETIC FORMS" <span>"FIG. 01"</span></small></div> })}
                         </div>
                     </div>
                     <div className="tools">

@@ -49,7 +49,7 @@ test("an agent designs a task dashboard from a blank artboard", async ({ page })
   expect((await read()).scene).toEqual(updated.scene);
   await expect(page.locator("#shapes").getByText("Today’s tasks", { exact: true })).toBeVisible();
 
-  await page.goto("/");
+  await page.goto("/?project=orbit");
   await expect(page.locator("#agent")).toHaveText("WebMCP tools ready");
   expect((await read()).scene.layers.map(layer => layer.id)).toContain("satellite");
 });

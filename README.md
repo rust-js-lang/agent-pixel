@@ -2,7 +2,7 @@
 
 A vector design editor for people and WebMCP agents. The React editor and document worker are written in Rust and compiled to JavaScript by rust-js. The optional server runs native Rust and shares the worker's document model.
 
-[Open the editor](https://rust-js-lang.github.io/agent-pixel/) · [Read the design](DESIGN.md)
+[Open Agent Pixel](https://rust-js-lang.github.io/agent-pixel/) · [Read the design](DESIGN.md)
 
 ## Run locally
 
@@ -15,7 +15,7 @@ bun run build
 cargo run --locked --manifest-path server/Cargo.toml
 ~~~
 
-Open `http://127.0.0.1:4173/` for a browser-only draft or `http://127.0.0.1:4173/?server` for the native document service. **Save to server** writes a revision to `data/document.json`. A stale save leaves the local draft intact. **Load server copy** replaces it with the current server revision.
+Open `http://127.0.0.1:4173/` for the project dashboard. Click a card to open its editor, or name a project and choose **New project** to start an empty artboard. Project names and drafts are stored in the current browser. The optional native document service is available at `http://127.0.0.1:4173/?server`. **Save to server** writes a revision to `data/document.json`. A stale save leaves the local draft intact. **Load server copy** replaces it with the current server revision.
 
 Select a shape on the poster or in Layers. Drag it, edit its bounds in the inspector, or change its fill. A WebMCP-capable browser exposes `read_design` and `edit_layer` while the page is open. To try an agent edit, read the scene, then call `edit_layer` with `{"id":"satellite","fill":"#247a69"}`.
 

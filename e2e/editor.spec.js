@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 test("create, resize and recolor a rectangle, then reopen the draft", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/?project=orbit");
   await page.getByRole("button", { name: /Rectangle \+/ }).click();
   const rectangle = page.getByRole("button", { name: /^Select rectangle / });
   await expect(rectangle).toHaveCount(1);
@@ -22,7 +22,7 @@ test("create, resize and recolor a rectangle, then reopen the draft", async ({ p
 });
 
 test("dragging to the artboard edge clamps and persists the position", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/?project=orbit");
   const satellite = page.getByRole("button", { name: "Select satellite" });
   const start = await satellite.boundingBox();
   const board = await page.locator("#art").boundingBox();

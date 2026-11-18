@@ -1,4 +1,6 @@
 mod browser;
+mod dashboard;
+mod projects;
 mod transport;
 mod view;
 mod webmcp;
@@ -7,6 +9,7 @@ pub use transport::serve_worker;
 
 use js::JsError;
 use pixel_geometry::scene::{Design, Document, Patch, Scene};
+use projects::Project;
 use react::dom::client::{Root, create_root};
 use std::cell::{Cell, RefCell};
 use webapi::window_global::window;
@@ -21,7 +24,7 @@ struct Editor {
     document: Document,
     selected: Option<String>,
     server: bool,
-    mockup: bool,
+    project: Project,
     busy: bool,
     fields_version: u32,
     status: String,
@@ -40,17 +43,7 @@ impl Editor {
 
     fn save_local(&self) -> Result<(), String> {
         let body = serde_json::to_string(&self.document).map_err(|e| e.to_string())?;
-        browser::save_draft(self.storage_key(), Some(&body)).map_err(message)
-    }
-
-    fn storage_key(&self) -> &'static str {
-        if self.mockup {
-            "agent-pixel:web-app:v1"
-        } else if self.server {
-            "agent-pixel:poster:v1:server"
-        } else {
-            "agent-pixel:poster:v1"
-        }
+        browser::save_draft(&self.project.storage_key(self.server), Some(&body)).map_err(message)
     }
 }
 
@@ -59,7 +52,21 @@ pub fn mount() {
         .document()
         .get_element_by_id("root")
         .expect("Editor root");
-    ROOT.set(Some(create_root(node, None)));
+    let root = create_root(node, None);
+    let Some((id, server)) = projects::route() else {
+        root.render(dashboard::home());
+        return;
+    };
+    let (catalog, _) = projects::list();
+    let Some(project) = catalog.into_iter().find(|project| project.id == id) else {
+        root.render(dashboard::missing());
+        return;
+    };
+    EDITOR.with_borrow_mut(|editor| {
+        editor.project = project;
+        editor.server = server;
+    });
+    ROOT.set(Some(root));
     status("Opening document…".into());
     js::spawn(Box::new(async {
         if let Err(error) = start().await {
@@ -99,19 +106,8 @@ async fn fetch_document(body: Option<&str>) -> Result<Document, String> {
 }
 
 async fn start() -> Result<(), String> {
-    let mockup = browser::workspace_query("design");
-    let server = !mockup && browser::workspace_query("server");
-    EDITOR.with_borrow_mut(|editor| {
-        editor.server = server;
-        editor.mockup = mockup;
-    });
-    let key = EDITOR.with_borrow(Editor::storage_key);
-    let local = browser::load_draft(key).map_err(message).and_then(|value| {
-        value
-            .map(|json| serde_json::from_str::<Document>(&json))
-            .transpose()
-            .map_err(|e| e.to_string())
-    });
+    let (project, server) = EDITOR.with_borrow(|editor| (editor.project.clone(), editor.server));
+    let local = project.load(server);
     let (saved, mut warning) = match local {
         Ok(Some(saved)) => (saved, None),
         Ok(None) if server => (fetch_document(None).await?, None),
@@ -121,17 +117,14 @@ async fn start() -> Result<(), String> {
             Some("Browser draft unavailable".to_string()),
         ),
     };
-    let mut design = if mockup {
-        restore(&Scene::blank()).await?
-    } else {
-        request("read", "null").await?
-    };
-    if let Some(scene) = saved.scene {
-        match restore(&scene).await {
-            Ok(restored) => design = restored,
-            Err(error) => warning = Some(error),
+    let scene = saved.scene.unwrap_or_else(|| project.initial_scene());
+    let design = match restore(&scene).await {
+        Ok(restored) => restored,
+        Err(error) => {
+            warning = Some(error);
+            restore(&project.initial_scene()).await?
         }
-    }
+    };
     EDITOR.with_borrow_mut(|editor| {
         editor.replace_scene(design.scene);
         editor.document.revision = saved.revision;
@@ -238,7 +231,8 @@ async fn save_server() -> Result<String, String> {
     EDITOR.with_borrow_mut(|editor| {
         editor.document.revision = saved.revision;
         if editor.document.scene == saved.scene {
-            browser::save_draft(editor.storage_key(), None).map_err(message)?;
+            browser::save_draft(&editor.project.storage_key(editor.server), None)
+                .map_err(message)?;
             Ok(format!("Saved server revision {}", saved.revision))
         } else {
             editor.save_local()?;
@@ -254,7 +248,7 @@ async fn load_server() -> Result<String, String> {
     EDITOR.with_borrow_mut(|editor| {
         editor.replace_scene(design.scene);
         editor.document.revision = saved.revision;
-        browser::save_draft(editor.storage_key(), None).map_err(message)?;
+        browser::save_draft(&editor.project.storage_key(editor.server), None).map_err(message)?;
         Ok(format!("Loaded server revision {}", saved.revision))
     })
 }

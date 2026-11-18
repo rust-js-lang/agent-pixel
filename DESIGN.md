@@ -52,3 +52,7 @@ For the small poster, copy a committed snapshot across the worker boundary once 
 The next milestone starts with a blank 480 × 600 mockup for a mobile web app. Its draft is independent from the example poster. The agent reads the artboard with `read_design`, adds editable rectangles, ellipses and text with `edit_layer`, then reads back the ordered layer list and stable IDs. Text layers carry their content, font size, color and geometry. The editor also exposes those fields to the person viewing the design.
 
 The release gate is a fresh Playwright session that opens the blank mockup and builds a task dashboard using WebMCP calls alone. The test verifies the rendered headings and cards, edits a layer by ID, reloads and compares the restored design. The result is an editable mockup for review and implementation.
+
+## Project dashboard
+
+The root route lists browser projects with artboard previews. A card opens the editor at `?project=<id>`. Each project has a stable ID and its own draft. Orbit study and Web app mockup use their original storage keys. The existing `?design` and `?server` links continue to open their respective editor modes. The project list and new drafts are stored in the current browser.

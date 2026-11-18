@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 test.beforeEach(async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/?project=orbit");
   await expect.poll(async () => (await page.webmcp.tools()).map(tool => tool.name).sort())
     .toEqual(["edit_layer", "read_design"]);
 });

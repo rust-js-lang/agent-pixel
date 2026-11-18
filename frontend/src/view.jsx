@@ -2,6 +2,7 @@
 
 import { edit, select, status, syncToServer } from "./lib.js";
 import { BOARD_HEIGHT, BOARD_WIDTH } from "../../core/src/lib.js";
+import { Project } from "./projects.js";
 import {
   $borrowMut,
   $byteLen,
@@ -116,10 +117,8 @@ function endDrag(event, commit) {
   }
 }
 
-function shape(layer) {
-  const captured = { ...layer };
-  const id = layer.id;
-  const styles = {
+function layerStyle(layer) {
+  return {
     left: percent(layer.x, BOARD_WIDTH),
     top: percent(layer.y, BOARD_HEIGHT),
     width: percent(layer.width, BOARD_WIDTH),
@@ -130,6 +129,21 @@ function shape(layer) {
     fontSize:
       layer.fontSize != null ? `${$displayF64((layer.fontSize / BOARD_WIDTH) * 100)}cqw` : "",
   };
+}
+
+export function previewLayer(layer) {
+  const class$ = layer.kind === "text" ? "preview-layer preview-text" : "preview-layer";
+  return (
+    <div key={layer.id} className={class$} style={layerStyle(layer)}>
+      {layer.text}
+    </div>
+  );
+}
+
+function shape(layer) {
+  const captured = { ...layer };
+  const id = layer.id;
+  const styles = layerStyle(layer);
   const class$ = layer.kind === "text" ? "shape text-layer" : "shape";
   return (
     <button
@@ -292,7 +306,8 @@ export function editor(editor) {
   const layerList = layers.toReversed().map((layer) => layerButton(layer, selected));
   const find = layers.find((layer) => layer.id === selected);
   const properties = find != null ? inspector(find, editor.fieldsVersion) : undefined;
-  const documentTitle = editor.mockup ? "Web app mockup" : "Orbit study";
+  const documentTitle = editor.project.title;
+  const poster = Project.isPoster(editor.project);
   const disabled = editor.busy || editor.document.scene == null;
   return (
     <>
@@ -303,14 +318,14 @@ export function editor(editor) {
         <span className="crumb">
           Workspace / <strong>{documentTitle}</strong>
         </span>
-        {editor.mockup ? <a href="./">Orbit study</a> : <a href="?design">Web app mockup</a>}
+        <a href="./">← Projects</a>
         <a href="https://github.com/rust-js-lang/agent-pixel/blob/main/DESIGN.md">Design doc ↗</a>
       </header>
       <main>
         <aside>
           <div className="eyebrow">DOCUMENT</div>
           <h2>{documentTitle}</h2>
-          <p>{editor.mockup ? "Mobile artboard" : "Poster composition"}</p>
+          <p>{!poster ? "Mobile artboard" : "Poster composition"}</p>
           <hr />
           <h3>Layers</h3>
           <div id="layers">{layerList}</div>
@@ -320,14 +335,14 @@ export function editor(editor) {
             <div className="legend">
               ARTBOARD 01<span>{`${BOARD_WIDTH} × ${BOARD_HEIGHT}`}</span>
             </div>
-            <div id="art" className={editor.mockup ? "mockup" : "poster"}>
-              {!editor.mockup && (
+            <div id="art" className={!poster ? "mockup" : "poster"}>
+              {poster && (
                 <div className="imprint">
                   FORM STUDIES<span>SERIES 01 / 03</span>
                 </div>
               )}
               <div id="shapes">{shapeList}</div>
-              {!editor.mockup && (
+              {poster && (
                 <div className="caption">
                   <b>Orbit study.</b>
                   <small>

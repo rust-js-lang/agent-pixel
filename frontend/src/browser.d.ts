@@ -7,6 +7,8 @@ export interface HttpResponse {
 
 export function workspaceQuery(name: string): boolean;
 
+export function queryValue(name: string): string | null | undefined;
+
 export function loadDraft(key: string): {
     TAG: "Ok";
     _0: string | null | undefined;
