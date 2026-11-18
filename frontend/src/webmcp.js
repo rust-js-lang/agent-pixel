@@ -15,6 +15,7 @@ import {
   changeDesign,
   changeVariant,
   editDesign,
+  exportUnsaved,
   placeComponent,
   readDesign,
   recoverPrevious,
@@ -161,6 +162,14 @@ export async function registerEditorTools() {
       description: "Retry saving a design held in memory after a browser storage error.",
       inputSchema: parse(READ_SCHEMA),
       execute: async () => toolResult(await retrySave()),
+    },
+    {
+      name: "export_unsaved_project",
+      description:
+        "Export the current in-memory artboard after a failed save along with the other saved project screens. Keep the returned bundle before navigating and use import_project to restore it.",
+      inputSchema: parse(READ_SCHEMA),
+      annotations: { readOnlyHint: true },
+      execute: async () => toolResult(exportUnsaved()),
     },
     {
       name: "recover_checkpoint",

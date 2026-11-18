@@ -63,4 +63,11 @@ export async function documentRequest(body) {
     },
   };
 }
+
+export function download(href, filename) {
+  const anchor = window.document.createElement("a");
+  anchor.href = href;
+  anchor.download = filename;
+  anchor.click();
+}
 //# sourceMappingURL=browser.js.map

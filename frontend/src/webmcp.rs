@@ -148,6 +148,13 @@ pub async fn register_editor_tools() -> Result<bool, &'static JsError> {
             execute: Box::new(|_| js::promise(async { tool_result(crate::retry_save().await) })),
         },
         Tool {
+            name: "export_unsaved_project",
+            description: "Export the current in-memory artboard after a failed save along with the other saved project screens. Keep the returned bundle before navigating and use import_project to restore it.",
+            input_schema: parse(READ_SCHEMA),
+            annotations: Some(Annotations { read_only_hint: true }),
+            execute: Box::new(|_| js::promise(async { tool_result(crate::export_unsaved()) })),
+        },
+        Tool {
             name: "recover_checkpoint",
             description: "Copy this screen's previous saved snapshot into a separate project. Pass the current storageRevision from get_save_status.",
             input_schema: parse(REVISION_SCHEMA),

@@ -459,10 +459,33 @@ fn save_status() -> Result<String, String> {
         serde_json::to_string(&serde_json::json!({
             "state": state, "storageRevision": editor.storage_revision,
             "recovery": editor.recovery, "message": editor.status,
+            "canExportUnsaved": editor.save_failed && editor.recovery.is_none() && !editor.busy,
             "hasPrevious": drafts::has_previous(&editor.storage_key())
         }))
         .map_err(|error| error.to_string())
     })
+}
+
+fn export_unsaved() -> Result<String, String> {
+    let (project, screen_id, scene) = EDITOR.with_borrow(|editor| {
+        if editor.busy {
+            return Err("Wait for the current document operation.");
+        }
+        if !editor.save_failed || editor.recovery.is_some() {
+            return Err("No unsaved draft to export.");
+        }
+        let scene = editor
+            .document
+            .scene
+            .clone()
+            .ok_or("No artboard to export.")?;
+        let screen_id = editor
+            .screen
+            .as_ref()
+            .map_or_else(|| "main".into(), |screen| screen.id.clone());
+        Ok((editor.project.clone(), screen_id, scene))
+    })?;
+    backup::export_unsaved(&project, &screen_id, scene, components::library()?)
 }
 
 async fn recover_previous(expected: &str) -> Result<Project, String> {

@@ -1,5 +1,7 @@
 use js::JsError;
-use webapi::{BodyInit, RequestInit, global::fetch, headers, url_search_params, window_global};
+use webapi::{
+    BodyInit, RequestInit, global::fetch, headers, tags, url_search_params, window_global,
+};
 
 pub struct HttpResponse {
     pub status: u16,
@@ -47,4 +49,11 @@ pub async fn document_request(body: Option<&str>) -> Result<HttpResponse, &'stat
         status: response.status() as u16,
         body: js::settle(response.text()).await?,
     })
+}
+
+pub fn download(href: &str, filename: &str) {
+    let anchor = window_global::window().document().create_element(tags::A);
+    anchor.set_href(href);
+    anchor.set_download(filename);
+    anchor.click();
 }

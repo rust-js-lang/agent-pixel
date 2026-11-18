@@ -32,3 +32,5 @@ export function documentRequest(body?: string | null | undefined): Promise<{
     TAG: "Err";
     _0: unknown;
 }>;
+
+export function download(href: string, filename: string): void;

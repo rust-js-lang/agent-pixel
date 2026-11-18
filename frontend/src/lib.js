@@ -620,12 +620,56 @@ export function saveStatus() {
         ),
       );
       map.set("message", { TAG: "String", _0: editor.status });
+      map.set("canExportUnsaved", {
+        TAG: "Bool",
+        _0: editor.saveFailed && editor.recovery == null && !editor.busy,
+      });
       map.set("hasPrevious", { TAG: "Bool", _0: Drafts.hasPrevious(Editor.storageKey(editor)) });
       const result = $toJson({ TAG: "Object", _0: map }, $jsonValueWrite, false);
       return result.TAG === "Err" ? { TAG: "Err", _0: $displayJsonError(result._0) } : result;
     },
     true,
   );
+}
+
+export function exportUnsaved() {
+  const result = $withBorrow(
+    editor,
+    (editor) => {
+      if (editor.busy) {
+        return { TAG: "Err", _0: "Wait for the current document operation." };
+      }
+      if (!editor.saveFailed || editor.recovery != null) {
+        return { TAG: "Err", _0: "No unsaved draft to export." };
+      }
+      const option =
+        editor.document.scene == null
+          ? editor.document.scene
+          : {
+              ...editor.document.scene,
+              layers: editor.document.scene.layers.map((item) => ({ ...item })),
+              instances: editor.document.scene.instances.map((item) => ({ ...item })),
+            };
+      const result =
+        option != null ? { TAG: "Ok", _0: option } : { TAG: "Err", _0: "No artboard to export." };
+      if (result.TAG === "Err") {
+        return result;
+      }
+      const scene = result._0;
+      const screenId = editor.screen != null ? editor.screen.id : "main";
+      return { TAG: "Ok", _0: [editor.project, screenId, scene] };
+    },
+    true,
+  );
+  if (result.TAG === "Err") {
+    return result;
+  }
+  const [project, screenId, scene] = result._0;
+  const result$1 = Components.library();
+  if (result$1.TAG === "Err") {
+    return result$1;
+  }
+  return Backup.exportUnsaved(project, screenId, scene, result$1._0);
 }
 
 export async function recoverPrevious(expected) {

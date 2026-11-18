@@ -24,6 +24,7 @@ import SHELL from "./shell.module.css";
 
 import { BOARD_HEIGHT, BOARD_WIDTH } from "../../core/src/lib.js";
 import { Scene } from "../../core/src/scene.js";
+import * as Backup from "./backup.js";
 import * as Components from "./components.js";
 import * as Drafts from "./drafts.js";
 import { Project } from "./projects.js";
@@ -758,15 +759,30 @@ export function editor(editor) {
             </button>
           )}
           {editor.saveFailed && editor.recovery == null && (
-            <button
-              type="button"
-              disabled={editor.busy}
-              onClick={async () => {
-                await retrySave();
-              }}
-            >
-              Retry draft save
-            </button>
+            <>
+              <p>Download a copy before leaving to keep your unsaved edits.</p>
+              <button
+                type="button"
+                disabled={editor.busy}
+                onClick={() => {
+                  const value = Backup.downloadUnsaved();
+                  if (value.TAG === "Err") {
+                    status(value._0);
+                  }
+                }}
+              >
+                Download unsaved project
+              </button>
+              <button
+                type="button"
+                disabled={editor.busy}
+                onClick={async () => {
+                  await retrySave();
+                }}
+              >
+                Retry draft save
+              </button>
+            </>
           )}
           <span id="agent" className={EDITOR_STYLES.agent}>
             {editor.agent}

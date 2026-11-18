@@ -1,10 +1,10 @@
 use crate::{
-    components, journey,
+    browser, components, journey,
     projects::{self, Project},
 };
 use pixel_geometry::{
     bundle::{BundleScreen, ProjectBundle, ScreenInfo, VERSION},
-    scene::{ComponentVariant, Document},
+    scene::{ComponentVariant, Document, Scene},
 };
 
 pub fn saved(project: &Project) -> Result<Option<ProjectBundle>, String> {
@@ -15,10 +15,27 @@ pub fn saved(project: &Project) -> Result<Option<ProjectBundle>, String> {
 
 pub fn export(id: &str) -> Result<String, String> {
     let project = projects::find(id).ok_or("Project not found in this browser.")?;
-    serialize(capture(&project)?)
+    serialize(capture(&project, None, None)?)
 }
 
-fn capture(project: &Project) -> Result<ProjectBundle, String> {
+pub fn download_url(json: &str) -> String {
+    format!(
+        "data:application/json;charset=utf-8,{}",
+        js::encode_uri_component(json)
+    )
+}
+
+pub fn download_unsaved() -> Result<(), String> {
+    let json = crate::export_unsaved()?;
+    browser::download(&download_url(&json), "agent-pixel-unsaved-project.json");
+    Ok(())
+}
+
+fn capture(
+    project: &Project,
+    replacement: Option<(&str, Scene)>,
+    library: Option<Vec<ComponentVariant>>,
+) -> Result<ProjectBundle, String> {
     let mut bundle = match saved(project)? {
         Some(bundle) => bundle,
         None => {
@@ -48,18 +65,46 @@ fn capture(project: &Project) -> Result<ProjectBundle, String> {
                 screens,
                 library: match crate::drafts::recovery_library(&project.storage_key(false)) {
                     Some(library) => library,
+                    None if library.is_some() => Vec::new(),
                     None => components::live_library()?,
                 },
             }
         }
     };
+    if let Some(library) = library {
+        bundle.library = library;
+    }
+    let mut replacement = replacement;
     for (index, screen) in bundle.screens.iter_mut().enumerate() {
+        if replacement
+            .as_ref()
+            .is_some_and(|(id, _)| *id == screen.info.id)
+        {
+            if let Some((_, scene)) = replacement.take() {
+                screen.scene = scene;
+            }
+            continue;
+        }
         let key = project.screen_key(false, (index > 0).then_some(screen.info.id.as_str()));
         if let Some(scene) = projects::load_document(&key)?.and_then(|document| document.scene) {
             screen.scene = scene;
         }
     }
+    if replacement.is_some() {
+        return Err("Screen not found in this project.".into());
+    }
     Ok(bundle)
+}
+
+pub fn export_unsaved(
+    project: &Project,
+    screen_id: &str,
+    scene: Scene,
+    library: Vec<ComponentVariant>,
+) -> Result<String, String> {
+    let mut bundle = capture(project, Some((screen_id, scene)), Some(library))?;
+    bundle.title = copied_title("Unsaved", &project.title);
+    serialize(bundle)
 }
 
 pub async fn restore_previous(
@@ -68,21 +113,14 @@ pub async fn restore_previous(
     document: Document,
     library: Option<Vec<ComponentVariant>>,
 ) -> Result<Project, String> {
-    let mut bundle = capture(project)?;
-    let screen = bundle
-        .screens
-        .iter_mut()
-        .find(|screen| screen.info.id == screen_id)
-        .ok_or("Screen not found in this project.")?;
-    screen.scene = document.scene.ok_or("Previous snapshot has no artboard.")?;
-    if let Some(library) = library {
-        bundle.library = library;
-    }
-    bundle.title = format!("Checkpoint — {}", project.title)
-        .chars()
-        .take(80)
-        .collect();
+    let scene = document.scene.ok_or("Previous snapshot has no artboard.")?;
+    let mut bundle = capture(project, Some((screen_id, scene)), library)?;
+    bundle.title = copied_title("Checkpoint", &project.title);
     import(&serialize(bundle)?).await
+}
+
+fn copied_title(prefix: &str, title: &str) -> String {
+    format!("{prefix} — {title}").chars().take(80).collect()
 }
 
 fn serialize(mut bundle: ProjectBundle) -> Result<String, String> {

@@ -483,9 +483,17 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
                         }}>"Copy previous checkpoint"</button>
                     })}
                     {(editor.save_failed && editor.recovery.is_none()).then(|| jsx! {
-                        <button type="button" disabled={editor.busy} onClick={|_| {
-                            js::spawn(Box::new(async { let _ = crate::retry_save().await; }));
-                        }}>"Retry draft save"</button>
+                        <>
+                            <p>"Download a copy before leaving to keep your unsaved edits."</p>
+                            <button type="button" disabled={editor.busy} onClick={|_| {
+                                if let Err(error) = crate::backup::download_unsaved() {
+                                    crate::status(error);
+                                }
+                            }}>"Download unsaved project"</button>
+                            <button type="button" disabled={editor.busy} onClick={|_| {
+                                js::spawn(Box::new(async { let _ = crate::retry_save().await; }));
+                            }}>"Retry draft save"</button>
+                        </>
                     })}
                     <span id="agent" className={EDITOR_STYLES.agent()}>{editor.agent.clone()}</span>
                     {editor.server.then(|| jsx! {

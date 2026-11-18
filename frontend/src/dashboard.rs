@@ -68,7 +68,7 @@ pub fn BackupPanel(BackupProps { projects }: BackupProps) -> JSX::Element {
                     match crate::backup::export(&id) {
                         Ok(json) => {
                             set_error.set(None);
-                            set_download.set(Some(format!("data:application/json;charset=utf-8,{}", js::encode_uri_component(&json))));
+                            set_download.set(Some(crate::backup::download_url(&json)));
                         }
                         Err(error) => { set_download.set(None); set_error.set(Some(error)); }
                     }

@@ -98,7 +98,7 @@ export function BackupPanel({ projects }) {
             const value = Backup.export(id);
             if (value.TAG === "Ok") {
               setError(undefined);
-              setDownload(`data:application/json;charset=utf-8,${encodeURIComponent(value._0)}`);
+              setDownload(Backup.downloadUrl(value._0));
             } else {
               setDownload(undefined);
               setError(value._0);
