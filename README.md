@@ -29,3 +29,13 @@ mkdir -p core/node_modules/@rust-js
 ln -sfn "$RUST_JS_DIR/std" core/node_modules/@rust-js/std
 (cd core && RUST_JS_COMPILER="$RUST_JS_DIR/target/debug/rust-js" bun "$RUST_JS_DIR/tooling/cli.js" build)
 ~~~
+
+## Playwright browser tests
+
+~~~sh
+bun install --frozen-lockfile
+bunx --bun playwright install --with-deps --only-shell chromium
+bun run test:e2e
+~~~
+
+The suite builds the editor and starts the native Rust server on loopback port 4187 with a temporary document directory. It covers pointer dragging, inspector edits, reload persistence and recovery from a conflicting server save. The agent tests discover and invoke the registered tools using Playwright's `page.webmcp.tools()` and `page.webmcp.callTool()` in Chromium with WebMCP enabled. Each Pages deployment runs the suite. A failed browser test leaves a trace in the workflow artifacts.
