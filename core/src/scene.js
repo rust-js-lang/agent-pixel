@@ -6,16 +6,19 @@ import {
   $assign,
   $at,
   $byteLen,
+  $clamp,
   $displayJsonError,
   $fromJson,
   $index,
   $json,
+  $min,
   $position,
-  $roomFor,
+  $retain,
+  $splice,
   $stripPrefix,
   $toJson,
   $trim,
-  $truncate,
+  $unwrap,
   $utf8Bytes,
 } from "@rust-js/std";
 
@@ -86,8 +89,9 @@ export function sceneDeserialize_deserialize(json) {
     [
       ["version", $json.u8],
       ["layers", $json.vec(layerDeserialize_deserialize)],
+      ["instances", $json.vec(componentInstanceDeserialize_deserialize), () => []],
     ],
-    ([version, layers]) => ({ version, layers }),
+    ([version, layers, instances]) => ({ version, layers, instances }),
   );
 }
 
@@ -102,6 +106,15 @@ export function sceneSerialize_serialize(scene, json) {
     layerSerialize_serialize(item, json);
   }
   json.endArray();
+  if (scene.instances.length !== 0) {
+    json.key("instances");
+    json.beginArray();
+    for (const item of scene.instances) {
+      json.element();
+      componentInstanceSerialize_serialize(item, json);
+    }
+    json.endArray();
+  }
   json.endObject();
 }
 
@@ -217,32 +230,154 @@ export function patchSerialize_serialize(patch, json) {
   json.endObject();
 }
 
+export function componentInstanceDeserialize_deserialize(json) {
+  return json.struct(
+    "struct ComponentInstance",
+    [
+      ["id", $json.string],
+      ["variant", $json.string],
+      ["family", $json.string],
+      ["x", $json.i32],
+      ["y", $json.i32],
+      ["layerIds", $json.vec($json.string)],
+    ],
+    ([id, variant, family, x, y, layerIds]) => ({ id, variant, family, x, y, layerIds }),
+  );
+}
+
+export function componentInstanceSerialize_serialize(componentInstance, json) {
+  json.beginObject();
+  json.key("id");
+  json.string(componentInstance.id);
+  json.key("variant");
+  json.string(componentInstance.variant);
+  json.key("family");
+  json.string(componentInstance.family);
+  json.key("x");
+  json.int(componentInstance.x);
+  json.key("y");
+  json.int(componentInstance.y);
+  json.key("layerIds");
+  json.beginArray();
+  for (const item of componentInstance.layerIds) {
+    json.element();
+    json.string(item);
+  }
+  json.endArray();
+  json.endObject();
+}
+
+export function componentVariantDeserialize_deserialize(json) {
+  return json.struct(
+    "struct ComponentVariant",
+    [
+      ["id", $json.string],
+      ["family", $json.string],
+      ["layers", $json.vec(layerDeserialize_deserialize)],
+    ],
+    ([id, family, layers]) => ({ id, family, layers }),
+  );
+}
+
+export function componentVariantSerialize_serialize(componentVariant, json) {
+  json.beginObject();
+  json.key("id");
+  json.string(componentVariant.id);
+  json.key("family");
+  json.string(componentVariant.family);
+  json.key("layers");
+  json.beginArray();
+  for (const item of componentVariant.layers) {
+    json.element();
+    layerSerialize_serialize(item, json);
+  }
+  json.endArray();
+  json.endObject();
+}
+
 export function componentInsertDeserialize_deserialize(json) {
   return json.struct(
     "struct ComponentInsert",
     [
-      ["layers", $json.vec(layerDeserialize_deserialize)],
+      ["variant", componentVariantDeserialize_deserialize],
       ["x", $json.i32],
       ["y", $json.i32],
     ],
-    ([layers, x, y]) => ({ layers, x, y }),
+    ([variant, x, y]) => ({ variant, x, y }),
   );
 }
 
 export function componentInsertSerialize_serialize(componentInsert, json) {
   json.beginObject();
-  json.key("layers");
-  json.beginArray();
-  for (const item of componentInsert.layers) {
-    json.element();
-    layerSerialize_serialize(item, json);
-  }
-  json.endArray();
+  json.key("variant");
+  componentVariantSerialize_serialize(componentInsert.variant, json);
   json.key("x");
   json.int(componentInsert.x);
   json.key("y");
   json.int(componentInsert.y);
   json.endObject();
+}
+
+export function componentSwitchDeserialize_deserialize(json) {
+  return json.struct(
+    "struct ComponentSwitch",
+    [
+      ["id", $json.string],
+      ["variant", componentVariantDeserialize_deserialize],
+    ],
+    ([id, variant]) => ({ id, variant }),
+  );
+}
+
+export function componentSwitchSerialize_serialize(componentSwitch, json) {
+  json.beginObject();
+  json.key("id");
+  json.string(componentSwitch.id);
+  json.key("variant");
+  componentVariantSerialize_serialize(componentSwitch.variant, json);
+  json.endObject();
+}
+
+function placedLayers(variant, id, x, y, fit) {
+  if (variant.layers.length === 0) {
+    return { TAG: "Err", _0: "Cannot insert an empty component." };
+  }
+  let left = BOARD_WIDTH;
+  let top = BOARD_HEIGHT;
+  let right = 0;
+  let bottom = 0;
+  for (const layer of variant.layers) {
+    const result = Layer.validate(layer);
+    if (result.TAG === "Err") {
+      return result;
+    }
+    left = Math.min(left, layer.x);
+    top = Math.min(top, layer.y);
+    right = Math.max(right, (layer.x + layer.width) | 0);
+    bottom = Math.max(bottom, (layer.y + layer.height) | 0);
+  }
+  const width = (right - left) | 0;
+  const height = (bottom - top) | 0;
+  let y$1;
+  if (fit) {
+    x = $clamp(x, 0, (BOARD_WIDTH - width) | 0);
+    y$1 = $clamp(y, 0, (BOARD_HEIGHT - height) | 0);
+  } else {
+    y$1 = y;
+  }
+  if (!fitsBoard(x, y$1, width, height)) {
+    return { TAG: "Err", _0: "Keep the entire component inside the artboard." };
+  }
+  return {
+    TAG: "Ok",
+    _0: variant.layers.map((layer, index) => {
+      layer = { ...layer };
+      layer.id = `${id}-${index}`;
+      layer.x = (x + ((layer.x - left) | 0)) | 0;
+      layer.y = (y$1 + ((layer.y - top) | 0)) | 0;
+      return layer;
+    }),
+  };
 }
 
 const Layer = {
@@ -306,6 +441,7 @@ export const Scene = {
     return {
       version: VERSION,
       layers: [],
+      instances: [],
     };
   },
 
@@ -321,6 +457,7 @@ export const Scene = {
         Layer.orbit("moon", 150, 175, 178, PAPER),
         Layer.orbit("satellite", 305, 312, 74, ORANGE),
       ],
+      instances: [],
     };
   },
 
@@ -338,58 +475,135 @@ export const Scene = {
         return { TAG: "Err", _0: "Duplicate layer ID." };
       }
     }
+    const instances = new Set();
+    const linkedLayers = new Set();
+    for (const instance of scene.instances) {
+      if (
+        !$add(instances, instance.id) ||
+        instance.layerIds.length === 0 ||
+        !instance.layerIds.every((id) => ids.has(id) && $add(linkedLayers, id))
+      ) {
+        return { TAG: "Err", _0: "Invalid component instance." };
+      }
+    }
     return { TAG: "Ok" };
   },
 
-  insertComponent(scene, insert, prefix) {
-    if (insert.layers.length === 0) {
-      return { TAG: "Err", _0: "Cannot insert an empty component." };
+  instanceForLayer(scene, id) {
+    return scene.instances.find((instance) => instance.layerIds.includes(id));
+  },
+
+  insertComponent(scene, insert, id) {
+    const result = placedLayers(insert.variant, id, insert.x, insert.y, false);
+    if (result.TAG === "Err") {
+      return result;
     }
-    if (insert.layers.length > (MAX_LAYERS - scene.layers.length) >>> 0) {
-      return { TAG: "Err", _0: "Layer limit reached." };
+    const layers = result._0;
+    const ids = layers.map((layer) => layer.id);
+    const candidate = {
+      ...scene,
+      layers: scene.layers.map((item) => ({ ...item })),
+      instances: scene.instances.map((item) => ({ ...item })),
+    };
+    const result$1 = candidate.layers;
+    for (let i = 0; i < layers.length; i++) {
+      result$1.push(layers[i]);
     }
-    let left = BOARD_WIDTH;
-    let top = BOARD_HEIGHT;
-    let right = 0;
-    let bottom = 0;
-    const iter = insert.layers.values();
-    let ids;
-    while (true) {
-      const layer = iter.next().value;
-      if (layer != null) {
-        const result = Layer.validate(layer);
+    candidate.instances.push({
+      id,
+      variant: insert.variant.id,
+      family: insert.variant.family,
+      x: insert.x,
+      y: insert.y,
+      layerIds: ids,
+    });
+    const result$2 = Scene.validate(candidate);
+    if (result$2.TAG === "Err") {
+      return result$2;
+    }
+    $assign(scene, candidate);
+    return { TAG: "Ok", _0: ids };
+  },
+
+  replaceInstance(scene, index, variant, fit) {
+    const instance = $index(scene.instances, index);
+    if (instance.family !== variant.family) {
+      return { TAG: "Err", _0: "Choose a variant from the same component family." };
+    }
+    const result = placedLayers(variant, instance.id, instance.x, instance.y, fit);
+    if (result.TAG === "Err") {
+      return result;
+    }
+    const layers = result._0;
+    const option = $position(scene.layers, (layer) => instance.layerIds.includes(layer.id));
+    const result$1 =
+      option != null ? { TAG: "Ok", _0: option } : { TAG: "Err", _0: "Missing instance layers." };
+    if (result$1.TAG === "Err") {
+      return result$1;
+    }
+    const position = result$1._0;
+    $retain(scene.layers, (layer) => !instance.layerIds.includes(layer.id));
+    instance.variant = variant.id;
+    instance.x = $unwrap($min(layers.map((layer) => layer.x)), "Component layers");
+    instance.y = $unwrap($min(layers.map((layer) => layer.y)), "Component layers");
+    instance.layerIds = layers.map((layer) => layer.id);
+    const selected = $index(instance.layerIds, 0);
+    $splice(scene.layers, position, position, layers);
+    return { TAG: "Ok", _0: selected };
+  },
+
+  switchComponent(scene, switch$) {
+    const position = $position(scene.instances, (instance) => instance.id === switch$.id);
+    const result$2 =
+      position != null
+        ? { TAG: "Ok", _0: position }
+        : { TAG: "Err", _0: "Unknown component instance." };
+    if (result$2.TAG === "Err") {
+      return result$2;
+    }
+    const index = result$2._0;
+    const candidate = {
+      ...scene,
+      layers: scene.layers.map((item) => ({ ...item })),
+      instances: scene.instances.map((item) => ({ ...item })),
+    };
+    const result = Scene.replaceInstance(candidate, index, switch$.variant, false);
+    if (result.TAG === "Err") {
+      return result;
+    }
+    const selected = result._0;
+    const result$1 = Scene.validate(candidate);
+    if (result$1.TAG === "Err") {
+      return result$1;
+    }
+    $assign(scene, candidate);
+    return { TAG: "Ok", _0: selected };
+  },
+
+  refreshComponents(scene, variants) {
+    const candidate = {
+      ...scene,
+      layers: scene.layers.map((item) => ({ ...item })),
+      instances: scene.instances.map((item) => ({ ...item })),
+    };
+    const end = candidate.instances.length;
+    for (let index = 0; index < end; index++) {
+      const variant = variants.find(
+        (variant) => variant.id === $index(candidate.instances, index).variant,
+      );
+      if (variant != null) {
+        const result = Scene.replaceInstance(candidate, index, variant, true);
         if (result.TAG === "Err") {
           return result;
         }
-        left = Math.min(left, layer.x);
-        top = Math.min(top, layer.y);
-        right = Math.max(right, (layer.x + layer.width) | 0);
-        bottom = Math.max(bottom, (layer.y + layer.height) | 0);
-      } else if (!fitsBoard(insert.x, insert.y, (right - left) | 0, (bottom - top) | 0)) {
-        return { TAG: "Err", _0: "Keep the entire component inside the artboard." };
-      } else {
-        $roomFor(insert.layers.length, 12);
-        ids = [];
-        for (const [index, layer] of insert.layers.entries()) {
-          layer.id = `${prefix}-${index}`;
-          layer.x = (insert.x + ((layer.x - left) | 0)) | 0;
-          layer.y = (insert.y + ((layer.y - top) | 0)) | 0;
-          ids.push(layer.id);
-        }
-        const previous = scene.layers.length;
-        const result = scene.layers;
-        for (let i = 0; i < insert.layers.length; i++) {
-          result.push(insert.layers[i]);
-        }
-        const validate = Scene.validate(scene);
-        if (validate.TAG === "Err") {
-          $truncate(scene.layers, previous);
-          return { TAG: "Err", _0: validate._0 };
-        }
-        break;
       }
     }
-    return { TAG: "Ok", _0: ids };
+    const result = Scene.validate(candidate);
+    if (result.TAG === "Err") {
+      return result;
+    }
+    $assign(scene, candidate);
+    return { TAG: "Ok" };
   },
 
   edit(scene, patch, newId) {
@@ -405,6 +619,12 @@ export const Scene = {
       fontSize == null
     ) {
       return { TAG: "Err", _0: "Specify shape properties." };
+    }
+    if (id != null && Scene.instanceForLayer(scene, id) != null) {
+      return {
+        TAG: "Err",
+        _0: "Edit the main component in Canopy UI or switch the instance variant.",
+      };
     }
     let index;
     if (id != null) {
@@ -566,28 +786,62 @@ export function workerCommand(scene, command, input, id) {
       break;
     }
     case "insert": {
-      const result$2 = $fromJson(input, componentInsertDeserialize_deserialize);
-      const result =
-        result$2.TAG === "Err" ? { TAG: "Err", _0: "Specify a valid component." } : result$2;
-      if (result.TAG === "Err") {
-        return result;
-      }
-      const component = result._0;
-      const result$1 = Scene.insertComponent(scene, component, id);
+      const result = $fromJson(input, componentInsertDeserialize_deserialize);
+      const result$1 =
+        result.TAG === "Err" ? { TAG: "Err", _0: "Specify a valid component." } : result;
       if (result$1.TAG === "Err") {
         return result$1;
       }
-      const ids = result$1._0;
+      const component = result$1._0;
+      const result$2 = Scene.insertComponent(scene, component, id);
+      if (result$2.TAG === "Err") {
+        return result$2;
+      }
+      const ids = result$2._0;
       const selected = ids[0];
       inserted = ids;
       edited = selected;
+      break;
+    }
+    case "switch": {
+      const result = $fromJson(input, componentSwitchDeserialize_deserialize);
+      const result$1 =
+        result.TAG === "Err" ? { TAG: "Err", _0: "Specify a valid component variant." } : result;
+      if (result$1.TAG === "Err") {
+        return result$1;
+      }
+      const switch$ = result$1._0;
+      const result$2 = Scene.switchComponent(scene, switch$);
+      if (result$2.TAG === "Err") {
+        return result$2;
+      }
+      edited = result$2._0;
+      break;
+    }
+    case "refresh_components": {
+      const result$2 = $fromJson(input, $json.vec(componentVariantDeserialize_deserialize));
+      const result =
+        result$2.TAG === "Err" ? { TAG: "Err", _0: "Invalid component library." } : result$2;
+      if (result.TAG === "Err") {
+        return result;
+      }
+      const variants = result._0;
+      const result$1 = Scene.refreshComponents(scene, variants);
+      if (result$1.TAG === "Err") {
+        return result$1;
+      }
+      edited = undefined;
       break;
     }
     default:
       return { TAG: "Err", _0: "Unknown command." };
   }
   const design = {
-    scene: { ...scene, layers: scene.layers.map((item) => ({ ...item })) },
+    scene: {
+      ...scene,
+      layers: scene.layers.map((item) => ({ ...item })),
+      instances: scene.instances.map((item) => ({ ...item })),
+    },
     board: {
       width: BOARD_WIDTH,
       height: BOARD_HEIGHT,

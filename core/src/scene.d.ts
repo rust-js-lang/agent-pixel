@@ -15,12 +15,21 @@ export interface Layer {
 export interface Scene {
     version: number;
     layers: Layer[];
+    instances: ComponentInstance[];
 }
 
 export const Scene: {
     blank(): Scene;
     poster(): Scene;
     validate(scene: Scene): {
+        TAG: "Ok";
+        _0?: undefined;
+    } | {
+        TAG: "Err";
+        _0: string;
+    };
+    instanceForLayer(scene: Scene, id: string): ComponentInstance | null | undefined;
+    refreshComponents(scene: Scene, variants: ComponentVariant[]): {
         TAG: "Ok";
         _0?: undefined;
     } | {
@@ -53,10 +62,30 @@ export interface Patch {
     fontSize?: number | undefined;
 }
 
-export interface ComponentInsert {
-    layers: Layer[];
+export interface ComponentInstance {
+    id: string;
+    variant: string;
+    family: string;
     x: number;
     y: number;
+    layerIds: string[];
+}
+
+export interface ComponentVariant {
+    id: string;
+    family: string;
+    layers: Layer[];
+}
+
+export interface ComponentInsert {
+    variant: ComponentVariant;
+    x: number;
+    y: number;
+}
+
+export interface ComponentSwitch {
+    id: string;
+    variant: ComponentVariant;
 }
 
 export interface Design {

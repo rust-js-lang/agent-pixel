@@ -26,6 +26,8 @@ pub struct Layer {
 pub struct Scene {
     pub version: u8,
     pub layers: Vec<Layer>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub instances: Vec<ComponentInstance>,
 }
 
 #[derive(Clone, Default, Deserialize, Serialize)]
@@ -49,11 +51,79 @@ pub struct Patch {
     pub font_size: Option<i32>,
 }
 
-#[derive(Deserialize, Serialize)]
-pub struct ComponentInsert {
-    pub layers: Vec<Layer>,
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct ComponentInstance {
+    pub id: String,
+    pub variant: String,
+    pub family: String,
     pub x: i32,
     pub y: i32,
+    #[serde(rename = "layerIds")]
+    pub layer_ids: Vec<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct ComponentVariant {
+    pub id: String,
+    pub family: String,
+    pub layers: Vec<Layer>,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct ComponentInsert {
+    pub variant: ComponentVariant,
+    pub x: i32,
+    pub y: i32,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct ComponentSwitch {
+    pub id: String,
+    pub variant: ComponentVariant,
+}
+
+fn placed_layers(
+    variant: &ComponentVariant,
+    id: &str,
+    x: i32,
+    y: i32,
+    fit: bool,
+) -> Result<Vec<Layer>, &'static str> {
+    if variant.layers.is_empty() {
+        return Err("Cannot insert an empty component.");
+    }
+    let (mut left, mut top, mut right, mut bottom) = (BOARD_WIDTH, BOARD_HEIGHT, 0, 0);
+    for layer in &variant.layers {
+        layer.validate()?;
+        left = left.min(layer.x);
+        top = top.min(layer.y);
+        right = right.max(layer.x + layer.width);
+        bottom = bottom.max(layer.y + layer.height);
+    }
+    let (width, height) = (right - left, bottom - top);
+    let (x, y) = if fit {
+        (
+            x.clamp(0, BOARD_WIDTH - width),
+            y.clamp(0, BOARD_HEIGHT - height),
+        )
+    } else {
+        (x, y)
+    };
+    if !fits_board(x, y, width, height) {
+        return Err("Keep the entire component inside the artboard.");
+    }
+    Ok(variant
+        .layers
+        .iter()
+        .enumerate()
+        .map(|(index, layer)| {
+            let mut layer = layer.clone();
+            layer.id = format!("{id}-{index}");
+            layer.x = x + (layer.x - left);
+            layer.y = y + (layer.y - top);
+            layer
+        })
+        .collect())
 }
 
 impl Layer {
@@ -113,6 +183,7 @@ impl Scene {
         Self {
             version: VERSION,
             layers: Vec::new(),
+            instances: Vec::new(),
         }
     }
 
@@ -128,6 +199,7 @@ impl Scene {
                 Layer::orbit("moon", 150, 175, 178, PAPER),
                 Layer::orbit("satellite", 305, 312, 74, ORANGE),
             ],
+            instances: Vec::new(),
         }
     }
 
@@ -142,45 +214,114 @@ impl Scene {
                 return Err("Duplicate layer ID.");
             }
         }
+        let mut instances = std::collections::HashSet::new();
+        let mut linked_layers = std::collections::HashSet::new();
+        for instance in &self.instances {
+            if !instances.insert(&instance.id)
+                || instance.layer_ids.is_empty()
+                || !instance
+                    .layer_ids
+                    .iter()
+                    .all(|id| ids.contains(id) && linked_layers.insert(id))
+            {
+                return Err("Invalid component instance.");
+            }
+        }
         Ok(())
+    }
+
+    pub fn instance_for_layer(&self, id: &str) -> Option<&ComponentInstance> {
+        self.instances
+            .iter()
+            .find(|instance| instance.layer_ids.iter().any(|layer| layer == id))
     }
 
     fn insert_component(
         &mut self,
-        mut insert: ComponentInsert,
-        prefix: &str,
+        insert: ComponentInsert,
+        id: String,
     ) -> Result<Vec<String>, &'static str> {
-        if insert.layers.is_empty() {
-            return Err("Cannot insert an empty component.");
-        }
-        if insert.layers.len() > MAX_LAYERS - self.layers.len() {
-            return Err("Layer limit reached.");
-        }
-        let (mut left, mut top, mut right, mut bottom) = (BOARD_WIDTH, BOARD_HEIGHT, 0, 0);
-        for layer in &insert.layers {
-            layer.validate()?;
-            left = left.min(layer.x);
-            top = top.min(layer.y);
-            right = right.max(layer.x + layer.width);
-            bottom = bottom.max(layer.y + layer.height);
-        }
-        if !fits_board(insert.x, insert.y, right - left, bottom - top) {
-            return Err("Keep the entire component inside the artboard.");
-        }
-        let mut ids = Vec::with_capacity(insert.layers.len());
-        for (index, layer) in insert.layers.iter_mut().enumerate() {
-            layer.id = format!("{prefix}-{index}");
-            layer.x = insert.x + (layer.x - left);
-            layer.y = insert.y + (layer.y - top);
-            ids.push(layer.id.clone());
-        }
-        let previous = self.layers.len();
-        self.layers.extend(insert.layers);
-        if let Err(error) = self.validate() {
-            self.layers.truncate(previous);
-            return Err(error);
-        }
+        let layers = placed_layers(&insert.variant, &id, insert.x, insert.y, false)?;
+        let ids: Vec<_> = layers.iter().map(|layer| layer.id.clone()).collect();
+        let mut candidate = self.clone();
+        candidate.layers.extend(layers);
+        candidate.instances.push(ComponentInstance {
+            id,
+            variant: insert.variant.id,
+            family: insert.variant.family,
+            x: insert.x,
+            y: insert.y,
+            layer_ids: ids.clone(),
+        });
+        candidate.validate()?;
+        *self = candidate;
         Ok(ids)
+    }
+
+    fn replace_instance(
+        &mut self,
+        index: usize,
+        variant: &ComponentVariant,
+        fit: bool,
+    ) -> Result<String, &'static str> {
+        let instance = &mut self.instances[index];
+        if instance.family != variant.family {
+            return Err("Choose a variant from the same component family.");
+        }
+        let layers = placed_layers(variant, &instance.id, instance.x, instance.y, fit)?;
+        let position = self
+            .layers
+            .iter()
+            .position(|layer| instance.layer_ids.contains(&layer.id))
+            .ok_or("Missing instance layers.")?;
+        self.layers
+            .retain(|layer| !instance.layer_ids.contains(&layer.id));
+        instance.variant = variant.id.clone();
+        instance.x = layers
+            .iter()
+            .map(|layer| layer.x)
+            .min()
+            .expect("Component layers");
+        instance.y = layers
+            .iter()
+            .map(|layer| layer.y)
+            .min()
+            .expect("Component layers");
+        instance.layer_ids = layers.iter().map(|layer| layer.id.clone()).collect();
+        let selected = instance.layer_ids[0].clone();
+        self.layers.splice(position..position, layers);
+        Ok(selected)
+    }
+
+    fn switch_component(&mut self, switch: ComponentSwitch) -> Result<String, &'static str> {
+        let index = self
+            .instances
+            .iter()
+            .position(|instance| instance.id == switch.id)
+            .ok_or("Unknown component instance.")?;
+        let mut candidate = self.clone();
+        let selected = candidate.replace_instance(index, &switch.variant, false)?;
+        candidate.validate()?;
+        *self = candidate;
+        Ok(selected)
+    }
+
+    pub fn refresh_components(
+        &mut self,
+        variants: &[ComponentVariant],
+    ) -> Result<(), &'static str> {
+        let mut candidate = self.clone();
+        for index in 0..candidate.instances.len() {
+            if let Some(variant) = variants
+                .iter()
+                .find(|variant| variant.id == candidate.instances[index].variant)
+            {
+                candidate.replace_instance(index, variant, true)?;
+            }
+        }
+        candidate.validate()?;
+        *self = candidate;
+        Ok(())
     }
 
     pub fn edit(&mut self, patch: Patch, new_id: String) -> Result<String, &'static str> {
@@ -205,6 +346,12 @@ impl Scene {
             && font_size.is_none()
         {
             return Err("Specify shape properties.");
+        }
+        if id
+            .as_deref()
+            .is_some_and(|id| self.instance_for_layer(id).is_some())
+        {
+            return Err("Edit the main component in Canopy UI or switch the instance variant.");
         }
         let index = match id {
             Some(id) => Some(
@@ -304,10 +451,21 @@ pub fn worker_command(
         "insert" => {
             let component =
                 serde_json::from_str(input).map_err(|_| "Specify a valid component.")?;
-            let ids = scene.insert_component(component, &id)?;
+            let ids = scene.insert_component(component, id)?;
             let selected = ids.first().cloned();
             inserted = Some(ids);
             selected
+        }
+        "switch" => {
+            let switch =
+                serde_json::from_str(input).map_err(|_| "Specify a valid component variant.")?;
+            Some(scene.switch_component(switch)?)
+        }
+        "refresh_components" => {
+            let variants: Vec<ComponentVariant> =
+                serde_json::from_str(input).map_err(|_| "Invalid component library.")?;
+            scene.refresh_components(&variants)?;
+            None
         }
         _ => return Err("Unknown command.".into()),
     };

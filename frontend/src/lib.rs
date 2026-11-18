@@ -9,11 +9,11 @@ mod webmcp;
 pub use transport::serve_worker;
 
 use js::JsError;
-use pixel_geometry::scene::{Design, Document, Patch, Scene};
+use pixel_geometry::scene::{ComponentInsert, ComponentSwitch, Design, Document, Patch, Scene};
 use projects::Project;
 use react::dom::client::{Root, create_root};
 use std::cell::{Cell, RefCell};
-use webapi::window_global::window;
+use webapi::{EventTargetExt, StorageEvent, events, window_global::window};
 
 thread_local! {
     static ROOT: Cell<Option<&'static Root>> = const { Cell::new(None) };
@@ -147,6 +147,19 @@ async fn start() -> Result<(), String> {
             }
         });
     });
+    refresh_linked_components().await;
+    window().add_event_listener(
+        events::Storage,
+        |event: &StorageEvent| {
+            if event
+                .key()
+                .is_none_or(|key| key == components::library_key())
+            {
+                js::spawn(Box::new(refresh_linked_components()));
+            }
+        },
+        None,
+    );
     render();
     let result = webmcp::register_editor_tools().await;
     EDITOR.with_borrow_mut(|editor| {
@@ -175,9 +188,62 @@ async fn edit_design(json: String) -> Result<String, String> {
 }
 
 async fn place_component(id: &str, x: i32, y: i32) -> Result<String, String> {
-    let placement = components::placement(id, x, y)?;
+    let placement = ComponentInsert {
+        variant: components::component(id)?,
+        x,
+        y,
+    };
     let json = serde_json::to_string(&placement).map_err(|error| error.to_string())?;
     change_design("insert", &json).await
+}
+
+async fn change_variant(id: String, variant: &str) -> Result<String, String> {
+    let switch = ComponentSwitch {
+        id,
+        variant: components::component(variant)?,
+    };
+    let json = serde_json::to_string(&switch).map_err(|error| error.to_string())?;
+    change_design("switch", &json).await
+}
+
+async fn refresh_linked_components() {
+    let has_instances = EDITOR.with_borrow(|editor| {
+        !editor.busy
+            && editor
+                .document
+                .scene
+                .as_ref()
+                .is_some_and(|scene| !scene.instances.is_empty())
+    });
+    if !has_instances {
+        return;
+    }
+    let result = async {
+        let body =
+            serde_json::to_string(&components::library()?).map_err(|error| error.to_string())?;
+        request("refresh_components", &body).await
+    }
+    .await;
+    match result {
+        Ok(design) => {
+            let changed = EDITOR.with_borrow_mut(|editor| {
+                if editor.document.scene.as_ref() == Some(&design.scene) {
+                    return false;
+                }
+                editor.document.scene = Some(design.scene);
+                if editor.save_local().is_ok() {
+                    editor.status = "Linked components updated from Canopy UI".into();
+                } else {
+                    editor.status = "Linked components updated in memory".into();
+                }
+                true
+            });
+            if changed {
+                render();
+            }
+        }
+        Err(error) => status(error),
+    }
 }
 
 async fn change_design(command: &str, json: &str) -> Result<String, String> {
@@ -241,6 +307,7 @@ fn sync_to_server(load: bool) {
         };
         EDITOR.with_borrow_mut(|editor| editor.busy = false);
         status(result.unwrap_or_else(|error| error));
+        refresh_linked_components().await;
     }));
 }
 

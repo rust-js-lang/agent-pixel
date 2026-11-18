@@ -8,6 +8,8 @@ import * as Projects from "./projects.js";
 import { createRoot } from "react-dom/client";
 import {
   componentInsertSerialize_serialize,
+  componentSwitchSerialize_serialize,
+  componentVariantSerialize_serialize,
   designDeserialize_deserialize,
   designSerialize_serialize,
   documentDeserialize_deserialize,
@@ -210,6 +212,13 @@ async function start() {
     },
     true,
   );
+  await refreshLinkedComponents();
+  window.addEventListener("storage", (event) => {
+    const key = event.key;
+    if (key == null || key === Components.libraryKey()) {
+      refreshLinkedComponents();
+    }
+  });
   render();
   const result = await Webmcp.registerEditorTools();
   $withBorrowMut(
@@ -255,11 +264,15 @@ export async function editDesign(json) {
 }
 
 export async function placeComponent(id, x, y) {
-  const result = Components.placement(id, x, y);
+  const result = Components.component(id);
   if (result.TAG === "Err") {
     return result;
   }
-  const placement = result._0;
+  const placement = {
+    variant: result._0,
+    x,
+    y,
+  };
   const result$1 = $toJson(placement, componentInsertSerialize_serialize, false);
   const result$2 =
     result$1.TAG === "Err" ? { TAG: "Err", _0: $displayJsonError(result$1._0) } : result$1;
@@ -268,6 +281,86 @@ export async function placeComponent(id, x, y) {
   }
   const json = result$2._0;
   return await changeDesign("insert", json);
+}
+
+export async function changeVariant(id, variant) {
+  const result = Components.component(variant);
+  if (result.TAG === "Err") {
+    return result;
+  }
+  const switch$ = {
+    id,
+    variant: result._0,
+  };
+  const result$1 = $toJson(switch$, componentSwitchSerialize_serialize, false);
+  const result$2 =
+    result$1.TAG === "Err" ? { TAG: "Err", _0: $displayJsonError(result$1._0) } : result$1;
+  if (result$2.TAG === "Err") {
+    return result$2;
+  }
+  const json = result$2._0;
+  return await changeDesign("switch", json);
+}
+
+async function refreshLinkedComponents() {
+  const hasInstances = $withBorrow(
+    editor,
+    (editor) =>
+      !editor.busy && editor.document.scene != null && editor.document.scene.instances.length !== 0,
+    true,
+  );
+  if (!hasInstances) {
+    return;
+  }
+  const result = await (async () => {
+    const result = Components.library();
+    if (result.TAG === "Err") {
+      return result;
+    }
+    const result$1 = $toJson(
+      result._0,
+      (value, json) => {
+        json.beginArray();
+        for (const item of value) {
+          json.element();
+          componentVariantSerialize_serialize(item, json);
+        }
+        json.endArray();
+      },
+      false,
+    );
+    const result$2 =
+      result$1.TAG === "Err" ? { TAG: "Err", _0: $displayJsonError(result$1._0) } : result$1;
+    if (result$2.TAG === "Err") {
+      return result$2;
+    }
+    const body = result$2._0;
+    return await request("refresh_components", body);
+  })();
+  if (result.TAG === "Ok") {
+    const captured = result._0.scene;
+    const changed = $withBorrowMut(
+      editor,
+      (editor) => {
+        if ($eq(editor.document.scene, captured)) {
+          return false;
+        }
+        editor.document.scene = captured;
+        if (Editor.saveLocal(editor).TAG === "Ok") {
+          editor.status = "Linked components updated from Canopy UI";
+        } else {
+          editor.status = "Linked components updated in memory";
+        }
+        return true;
+      },
+      true,
+    );
+    if (changed) {
+      render();
+    }
+  } else {
+    status(result._0);
+  }
 }
 
 async function changeDesign(command, json) {
@@ -369,6 +462,7 @@ export function syncToServer(load) {
       true,
     );
     status(result.TAG === "Ok" ? result._0 : result._0);
+    await refreshLinkedComponents();
   })();
 }
 

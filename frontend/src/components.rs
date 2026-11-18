@@ -1,5 +1,5 @@
 use crate::projects::canopy_library;
-use pixel_geometry::scene::ComponentInsert;
+use pixel_geometry::scene::{ComponentVariant, Scene};
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -76,24 +76,48 @@ pub fn variants() -> &'static [Variant] {
     &VARIANTS
 }
 
-pub fn placement(id: &str, x: i32, y: i32) -> Result<ComponentInsert, String> {
-    let variant = variants()
-        .iter()
-        .find(|variant| variant.id == id)
-        .ok_or("Unknown component variant.")?;
+pub fn library_key() -> String {
+    canopy_library().storage_key(false)
+}
+
+fn source() -> Result<Scene, String> {
     let project = canopy_library();
-    let scene = project
+    Ok(project
         .load(false)?
         .and_then(|document| document.scene)
-        .unwrap_or_else(|| project.initial_scene());
+        .unwrap_or_else(|| project.initial_scene()))
+}
+
+fn variant_layers(scene: &Scene, variant: &Variant) -> ComponentVariant {
     let layers = scene
         .layers
-        .into_iter()
+        .iter()
         .filter(|layer| {
             layer.id.strip_prefix(variant.id).is_some_and(|suffix| {
                 suffix.is_empty() || (suffix.starts_with('-') && suffix != "-variant")
             })
         })
+        .cloned()
         .collect();
-    Ok(ComponentInsert { layers, x, y })
+    ComponentVariant {
+        id: variant.id.into(),
+        family: variant.family.into(),
+        layers,
+    }
+}
+
+pub fn component(id: &str) -> Result<ComponentVariant, String> {
+    let variant = variants()
+        .iter()
+        .find(|variant| variant.id == id)
+        .ok_or("Unknown component variant.")?;
+    Ok(variant_layers(&source()?, variant))
+}
+
+pub fn library() -> Result<Vec<ComponentVariant>, String> {
+    let scene = source()?;
+    Ok(variants()
+        .iter()
+        .map(|variant| variant_layers(&scene, variant))
+        .collect())
 }

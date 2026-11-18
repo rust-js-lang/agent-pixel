@@ -5,7 +5,7 @@ import { Project, projectSerialize_serialize } from "./projects.js";
 import * as Projects from "./projects.js";
 import { variantSerialize_serialize } from "./components.js";
 import * as Components from "./components.js";
-import { editDesign, placeComponent, readDesign, renderDashboard } from "./lib.js";
+import { changeVariant, editDesign, placeComponent, readDesign, renderDashboard } from "./lib.js";
 import {
   $displayJsonError,
   $fromJson,
@@ -53,6 +53,26 @@ function insertComponentDeserialize_deserialize(json) {
   );
 }
 
+const SWITCH_SCHEMA = `{
+    "type":"object","required":["instanceId","variantId"],"additionalProperties":false,
+    "properties":{
+        "instanceId":{"type":"string","description":"Instance ID from read_design's scene.instances"},
+        "variantId":{"type":"string","description":"Variant ID from the same family in list_components"}
+    }
+}`;
+
+function switchVariantDeserialize_deserialize(json) {
+  return json.struct(
+    "struct SwitchVariant",
+    [
+      ["instanceId", $json.string],
+      ["variantId", $json.string],
+    ],
+    ([instanceId, variantId]) => ({ instanceId, variantId }),
+    { deny: true },
+  );
+}
+
 export async function registerEditorTools() {
   return await register([
     {
@@ -81,7 +101,7 @@ export async function registerEditorTools() {
     {
       name: "insert_component",
       description:
-        "Insert an editable copy of a Canopy UI variant at an artboard position. Returns the new layer IDs and scene.",
+        "Insert a linked Canopy UI instance at an artboard position. Returns its layer IDs and the scene with instance metadata.",
       inputSchema: parse(INSERT_SCHEMA),
       async execute(input) {
         const value = decode(
@@ -92,6 +112,24 @@ export async function registerEditorTools() {
         const result =
           value.TAG === "Ok"
             ? await placeComponent(value._0.id, value._0.x, value._0.y)
+            : { TAG: "Err", _0: value._0 };
+        return toolResult(result);
+      },
+    },
+    {
+      name: "switch_component_variant",
+      description:
+        "Switch a linked instance to another variant in its component family and return the updated design.",
+      inputSchema: parse(SWITCH_SCHEMA),
+      async execute(input) {
+        const value = decode(
+          input,
+          "Provide an instance ID and a variant ID.",
+          switchVariantDeserialize_deserialize,
+        );
+        const result =
+          value.TAG === "Ok"
+            ? await changeVariant(value._0.instanceId, value._0.variantId)
             : { TAG: "Err", _0: value._0 };
         return toolResult(result);
       },

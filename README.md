@@ -76,6 +76,6 @@ The [dashboard WebMCP test](e2e/dashboard-webmcp.spec.js) exercises the handoff 
 
 ## Reuse Canopy UI components
 
-In an editor, expand **Canopy UI components**, choose a variant, set its position, and select **Insert component**. New insertions use the currently saved Canopy UI artboard in this browser. Each insertion creates independent, editable layers in the destination project.
+In an editor, expand **Canopy UI components**, choose a variant, set its position, and select **Insert component**. Insertions create linked instances of the Canopy UI variants saved in this browser. Edit the main component in Canopy UI to update instances in open editors and when a project is reopened. Select any layer of an instance to switch its variant in the inspector. Existing independent copies remain editable.
 
-An agent can call `list_components` for the variant IDs, then call `insert_component` with `{ id, x, y }`. The coordinates place the variant's top-left corner in artboard pixels. The result includes the new layer IDs and the updated scene.
+An agent can call `list_components` for the variant IDs, then call `insert_component` with `{ id, x, y }`. The coordinates place the variant's top-left corner in artboard pixels. The result includes the new layer IDs and the updated scene. Use the instance ID from `scene.instances` with `switch_component_variant` and a variant ID from the same family.

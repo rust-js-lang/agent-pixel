@@ -1,7 +1,7 @@
 use crate::{Editor, edit, select, sync_to_server};
 use pixel_geometry::{
     BOARD_HEIGHT, BOARD_WIDTH,
-    scene::{Layer, Patch},
+    scene::{ComponentInstance, Layer, Patch},
 };
 use react::{CSSProperties, JSX, event::PointerEvent, jsx};
 use std::cell::RefCell;
@@ -135,7 +135,7 @@ pub fn preview_layer(layer: &Layer) -> JSX::Element {
     jsx! { <div key={layer.id.clone()} className={class} style={layer_style(layer)}>{layer.text.clone()}</div> }
 }
 
-fn shape(layer: &Layer) -> JSX::Element {
+fn shape(layer: &Layer, linked: bool) -> JSX::Element {
     let captured = layer.clone();
     let id = layer.id.clone();
     let styles = layer_style(layer);
@@ -148,7 +148,7 @@ fn shape(layer: &Layer) -> JSX::Element {
         <button key={layer.id.clone()} className={class} style={styles}
             aria-label={format!("Select {}", label(layer))}
             onClick={move |_| select(id.clone())}
-            onPointerDown={move |event| begin_drag(&captured, event)}
+            onPointerDown={move |event| { if !linked { begin_drag(&captured, event); } }}
             onPointerMove={move_drag}
             onPointerUp={|event| end_drag(event, true)}
             onPointerCancel={|event| end_drag(event, false)}>{layer.text.clone()}</button>
@@ -240,6 +240,32 @@ fn inspector(layer: &Layer, version: u32) -> JSX::Element {
     }
 }
 
+fn instance_inspector(instance: &ComponentInstance) -> JSX::Element {
+    let id = instance.id.clone();
+    let options = crate::components::variants()
+        .iter()
+        .filter(|variant| variant.family == instance.family)
+        .map(|variant| jsx! { <option key={variant.id} value={variant.id}>{variant.name}</option> })
+        .collect::<Vec<_>>();
+    jsx! {
+        <div className="component-library">
+            <h2>{instance.family.clone()}</h2>
+            <p>"Linked to Canopy UI"</p>
+            <label htmlFor="instance-variant">"Instance variant"</label>
+            <select id="instance-variant" value={instance.variant.clone()} onChange={move |event| {
+                let id = id.clone();
+                let variant = event.current_target().value();
+                js::spawn(Box::new(async move {
+                    if let Err(error) = crate::change_variant(id, &variant).await {
+                        crate::status(error);
+                    }
+                }));
+            }}>{options}</select>
+            <p><a href="?project=canopy-ui">"Open Canopy UI"</a></p>
+        </div>
+    }
+}
+
 fn component_picker(disabled: bool) -> JSX::Element {
     let options = crate::components::variants().iter().map(|variant| jsx! {
         <option key={variant.id} value={variant.id}>{format!("{} · {}", variant.family, variant.name)}</option>
@@ -279,7 +305,18 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
         .as_ref()
         .map_or(&[][..], |scene| scene.layers.as_slice());
     let selected = editor.selected.as_deref();
-    let shape_list = layers.iter().map(shape).collect::<Vec<_>>();
+    let scene = editor.document.scene.as_ref();
+    let shape_list = layers
+        .iter()
+        .map(|layer| {
+            shape(
+                layer,
+                scene
+                    .and_then(|scene| scene.instance_for_layer(&layer.id))
+                    .is_some(),
+            )
+        })
+        .collect::<Vec<_>>();
     let layer_list = layers
         .iter()
         .rev()
@@ -288,7 +325,12 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
     let properties = layers
         .iter()
         .find(|layer| Some(layer.id.as_str()) == selected)
-        .map(|layer| inspector(layer, editor.fields_version));
+        .map(
+            |layer| match scene.and_then(|scene| scene.instance_for_layer(&layer.id)) {
+                Some(instance) => instance_inspector(instance),
+                None => inspector(layer, editor.fields_version),
+            },
+        );
     let document_title = editor.project.title.as_str();
     let poster = editor.project.is_poster();
     let disabled = editor.busy || editor.document.scene.is_none();

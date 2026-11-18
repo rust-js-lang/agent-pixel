@@ -33,7 +33,37 @@ export function variants() {
   return VARIANTS;
 }
 
-export function placement(id, x, y) {
+export function libraryKey() {
+  return Project.storageKey(canopyLibrary(), false);
+}
+
+function source() {
+  const project = canopyLibrary();
+  const result = Project.load(project, false);
+  if (result.TAG === "Err") {
+    return result;
+  }
+  return { TAG: "Ok", _0: result._0?.scene ?? Project.initialScene(project) };
+}
+
+function variantLayers(scene, variant) {
+  const layers = scene.layers
+    .filter((layer) => {
+      const stripPrefix = $stripPrefix(layer.id, variant.id);
+      return (
+        stripPrefix != null &&
+        (stripPrefix === "" || (stripPrefix.startsWith("-") && stripPrefix !== "-variant"))
+      );
+    })
+    .map((item) => ({ ...item }));
+  return {
+    id: variant.id,
+    family: variant.family,
+    layers,
+  };
+}
+
+export function component(id) {
   const find = variants().find((variant) => variant.id === id);
   const result =
     find != null ? { TAG: "Ok", _0: find } : { TAG: "Err", _0: "Unknown component variant." };
@@ -41,19 +71,19 @@ export function placement(id, x, y) {
     return result;
   }
   const variant = result._0;
-  const project = canopyLibrary();
-  const result$1 = Project.load(project, false);
+  const result$1 = source();
   if (result$1.TAG === "Err") {
     return result$1;
   }
-  const scene = result$1._0?.scene ?? Project.initialScene(project);
-  const layers = scene.layers.filter((layer) => {
-    const stripPrefix = $stripPrefix(layer.id, variant.id);
-    return (
-      stripPrefix != null &&
-      (stripPrefix === "" || (stripPrefix.startsWith("-") && stripPrefix !== "-variant"))
-    );
-  });
-  return { TAG: "Ok", _0: { layers, x, y } };
+  return { TAG: "Ok", _0: variantLayers(result$1._0, variant) };
+}
+
+export function library() {
+  const result = source();
+  if (result.TAG === "Err") {
+    return result;
+  }
+  const scene = result._0;
+  return { TAG: "Ok", _0: variants().map((variant) => variantLayers(scene, variant)) };
 }
 //# sourceMappingURL=components.js.map

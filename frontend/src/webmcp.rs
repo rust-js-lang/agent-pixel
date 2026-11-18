@@ -67,6 +67,21 @@ struct InsertComponent {
     y: i32,
 }
 
+const SWITCH_SCHEMA: &str = r#"{
+    "type":"object","required":["instanceId","variantId"],"additionalProperties":false,
+    "properties":{
+        "instanceId":{"type":"string","description":"Instance ID from read_design's scene.instances"},
+        "variantId":{"type":"string","description":"Variant ID from the same family in list_components"}
+    }
+}"#;
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SwitchVariant {
+    instance_id: String,
+    variant_id: String,
+}
+
 pub async fn register_editor_tools() -> Result<bool, &'static JsError> {
     register(vec![
         Tool {
@@ -80,12 +95,25 @@ pub async fn register_editor_tools() -> Result<bool, &'static JsError> {
         },
         Tool {
             name: "insert_component",
-            description: "Insert an editable copy of a Canopy UI variant at an artboard position. Returns the new layer IDs and scene.",
+            description: "Insert a linked Canopy UI instance at an artboard position. Returns its layer IDs and the scene with instance metadata.",
             input_schema: parse(INSERT_SCHEMA),
             annotations: None,
             execute: Box::new(|input| js::promise(async move {
                 let result = match decode(input, "Provide a component variant ID and integer x and y coordinates.") {
                     Ok(InsertComponent { id, x, y }) => crate::place_component(&id, x, y).await,
+                    Err(error) => Err(error),
+                };
+                tool_result(result)
+            })),
+        },
+        Tool {
+            name: "switch_component_variant",
+            description: "Switch a linked instance to another variant in its component family and return the updated design.",
+            input_schema: parse(SWITCH_SCHEMA),
+            annotations: None,
+            execute: Box::new(|input| js::promise(async move {
+                let result = match decode(input, "Provide an instance ID and a variant ID.") {
+                    Ok(SwitchVariant { instance_id, variant_id }) => crate::change_variant(instance_id, &variant_id).await,
                     Err(error) => Err(error),
                 };
                 tool_result(result)

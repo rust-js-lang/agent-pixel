@@ -42,3 +42,44 @@ test("an agent discovers variants, inserts a copy, and rejects a partial placeme
   expect(await insert(470, 100)).toMatchObject({ isError: true });
   expect((await page.webmcp.callTool("read_design")).scene).toEqual(second.scene);
 });
+
+test("linked instances receive source edits and can switch variants", async ({ page, context }) => {
+  const library = await context.newPage();
+  await library.goto("/?project=canopy-ui");
+  await expect(library.locator("#agent")).toHaveText("WebMCP tools ready");
+
+  await page.goto("/?design");
+  await expect(page.locator("#agent")).toHaveText("WebMCP tools ready");
+  const placed = await page.webmcp.callTool("insert_component", { id: "primary-button", x: 36, y: 92 });
+  const instance = placed.scene.instances[0];
+  expect(instance).toMatchObject({ family: "Button", variant: "primary-button", x: 36, y: 92, layerIds: placed.inserted });
+  await expect(page.getByLabel("Instance variant")).toHaveValue("primary-button");
+
+  await library.webmcp.callTool("edit_layer", { id: "primary-button", fill: "#247a69" });
+  await expect(page.locator("#status")).toHaveText("Linked components updated from Canopy UI");
+  const current = () => page.webmcp.callTool("read_design");
+  expect((await current()).scene.layers[0]).toMatchObject({
+    id: instance.layerIds[0], x: 36, y: 92, fill: "#247a69"
+  });
+
+  await page.getByLabel("Instance variant").selectOption("destructive-button");
+  await expect(page.locator("#shapes").getByText("Remove", { exact: true })).toBeVisible();
+  expect((await current()).scene.instances[0]).toMatchObject({
+    id: instance.id, variant: "destructive-button", x: 36, y: 92
+  });
+
+  const changeVariant = variantId => page.webmcp.callTool("switch_component_variant", { instanceId: instance.id, variantId });
+  const switched = await changeVariant("secondary-button");
+  expect(switched.scene.instances[0]).toMatchObject({ id: instance.id, variant: "secondary-button" });
+  expect(await changeVariant("on-switch")).toMatchObject({ isError: true });
+  expect((await current()).scene).toEqual(switched.scene);
+
+  await page.goto("/");
+  await library.webmcp.callTool("edit_layer", { id: "secondary-button", fill: "#dbedbb" });
+  await page.goto("/?design");
+  await expect(page.locator("#agent")).toHaveText("WebMCP tools ready");
+  const reopened = (await current()).scene;
+  expect(reopened.instances).toEqual(switched.scene.instances);
+  expect(reopened.layers[0].fill).toBe("#dbedbb");
+  await expect(page.getByLabel("Instance variant")).toHaveValue("secondary-button");
+});

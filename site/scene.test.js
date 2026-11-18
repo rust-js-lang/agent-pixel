@@ -13,7 +13,8 @@ test("compiled bounds include edges and reject overflow", () => {
 test("the poster round-trips and duplicate identities are rejected", () => {
   const scene = Scene.poster();
   const restore = input => workerCommand(scene, "restore", JSON.stringify(input), "");
-  expect(JSON.parse(restore(scene)._0).scene).toEqual(scene);
+  const legacy = JSON.parse(JSON.stringify({ version: scene.version, layers: scene.layers }));
+  expect(JSON.parse(restore(legacy)._0).scene).toEqual(legacy);
   expect(restore({ version: 1, layers: [scene.layers[0], scene.layers[0]] }))
     .toEqual({ TAG: "Err", _0: "Duplicate layer ID." });
 });
