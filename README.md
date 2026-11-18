@@ -15,7 +15,7 @@ bun run build
 cargo run --locked --manifest-path server/Cargo.toml
 ~~~
 
-Open `http://127.0.0.1:4173/` for the project dashboard. A fresh browser starts with two editable demos, **Orbit study** and **Current — Home energy**. Click a card to open its editor, or name a project and choose **New project** to start an empty artboard. Project names and drafts are stored in the current browser. The optional native document service is available at `http://127.0.0.1:4173/?server`. **Save to server** writes a revision to `data/document.json`. A stale save leaves the local draft intact. **Load server copy** replaces it with the current server revision.
+Open `http://127.0.0.1:4173/` for the project dashboard. A fresh browser starts with three editable demos, **Orbit study**, **Current — Home energy**, and **Canopy UI — Design system**. Click a card to open its editor, or name a project and choose **New project** to start an empty artboard. Project names and drafts are stored in the current browser. The optional native document service is available at `http://127.0.0.1:4173/?server`. **Save to server** writes a revision to `data/document.json`. A stale save leaves the local draft intact. **Load server copy** replaces it with the current server revision.
 
 Select a shape on the poster or in Layers. Drag it, edit its bounds in the inspector, or change its fill. A WebMCP-capable browser exposes `read_design` and `edit_layer` while the page is open. To try an agent edit, read the scene, then call `edit_layer` with `{"id":"satellite","fill":"#247a69"}`.
 

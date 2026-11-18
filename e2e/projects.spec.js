@@ -5,7 +5,7 @@ test("open projects from the dashboard and keep their drafts separate", async ({
   await expect(page.getByRole("heading", { name: "Design projects" })).toBeVisible();
   const orbit = page.getByRole("link", { name: "Orbit study 7 layers" });
   const current = page.getByRole("link", { name: "Current — Home energy 50 layers" });
-  await expect(page.getByRole("region", { name: "Projects" }).getByRole("link")).toHaveCount(2);
+  await expect(page.getByRole("region", { name: "Projects" }).getByRole("link")).toHaveCount(3);
   await expect(orbit).toBeVisible();
   await current.click();
   await expect(page).toHaveURL(/\?project=current$/);
@@ -56,4 +56,27 @@ test("an unknown project offers a way back to the dashboard", async ({ page }) =
   await expect(page.getByRole("heading", { name: "Project unavailable" })).toBeVisible();
   await page.getByRole("link", { name: "Back to projects" }).click();
   await expect(page.getByRole("heading", { name: "Design projects" })).toBeVisible();
+});
+
+test("the design system demo opens with four editable component families", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("link", { name: /Canopy UI — Design system/ }).click();
+  await expect(page).toHaveURL("/?project=canopy-ui");
+  await expect(page.locator("#agent")).toHaveText("WebMCP tools ready");
+  const design = await page.webmcp.callTool("read_design");
+  const labels = design.scene.layers.filter(layer => layer.kind === "text").map(layer => layer.text);
+  for (const group of [
+    ["Buttons", "Primary", "Secondary", "Destructive"],
+    ["Status badges", "Neutral", "Success", "Warning"],
+    ["Text inputs", "Default", "Focused", "Error"],
+    ["Switches", "Off", "On", "Disabled"]
+  ]) {
+    expect(labels).toEqual(expect.arrayContaining(group));
+    await expect(page.locator("#shapes").getByText(group[0], { exact: true })).toBeVisible();
+  }
+  const edited = await page.webmcp.callTool("edit_layer", { id: "primary-button", fill: "#247a69" });
+  expect(edited.scene.layers.find(layer => layer.id === "primary-button").fill).toBe("#247a69");
+  await page.reload();
+  await expect(page.locator("#agent")).toHaveText("WebMCP tools ready");
+  expect((await page.webmcp.callTool("read_design")).scene).toEqual(edited.scene);
 });

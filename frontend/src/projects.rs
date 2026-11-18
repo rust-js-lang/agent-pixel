@@ -5,6 +5,7 @@ use webapi::global::crypto;
 
 const ORBIT: &str = "orbit";
 const CURRENT: &str = "current";
+const CANOPY: &str = "canopy-ui";
 const WEB_APP: &str = "web-app";
 const CATALOG: &str = "agent-pixel:projects:v1";
 
@@ -37,6 +38,8 @@ impl Project {
             ORBIT => Scene::poster(),
             CURRENT => serde_json::from_str(include_str!("../demos/current.json"))
                 .expect("Valid Current demo document"),
+            CANOPY => serde_json::from_str(include_str!("../demos/canopy-ui.json"))
+                .expect("Valid Canopy UI demo document"),
             _ => Scene::blank(),
         }
     }
@@ -64,6 +67,10 @@ pub fn list() -> (Vec<Project>, Option<String>) {
         Project {
             id: CURRENT.into(),
             title: "Current — Home energy".into(),
+        },
+        Project {
+            id: CANOPY.into(),
+            title: "Canopy UI — Design system".into(),
         },
     ];
     let legacy = blank_mockup();

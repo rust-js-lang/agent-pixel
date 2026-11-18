@@ -1,0 +1,682 @@
+{
+  "version": 1,
+  "layers": [
+    {
+      "id": "page",
+      "kind": "rectangle",
+      "x": 0,
+      "y": 0,
+      "width": 480,
+      "height": 600,
+      "fill": "#f5f6f0"
+    },
+    {
+      "id": "masthead",
+      "kind": "rectangle",
+      "x": 0,
+      "y": 0,
+      "width": 480,
+      "height": 121,
+      "fill": "#163d34"
+    },
+    {
+      "id": "mark",
+      "kind": "ellipse",
+      "x": 25,
+      "y": 21,
+      "width": 14,
+      "height": 14,
+      "fill": "#ccf287"
+    },
+    {
+      "id": "wordmark",
+      "kind": "text",
+      "x": 48,
+      "y": 18,
+      "width": 210,
+      "height": 19,
+      "fill": "#ccf287",
+      "text": "C A N O P Y   U I",
+      "fontSize": 12
+    },
+    {
+      "id": "page-title",
+      "kind": "text",
+      "x": 25,
+      "y": 45,
+      "width": 365,
+      "height": 48,
+      "fill": "#ffffff",
+      "text": "Components",
+      "fontSize": 36
+    },
+    {
+      "id": "page-intro",
+      "kind": "text",
+      "x": 26,
+      "y": 94,
+      "width": 428,
+      "height": 19,
+      "fill": "#d7e7dd",
+      "text": "Controls and states for everyday interfaces",
+      "fontSize": 13
+    },
+    {
+      "id": "buttons-heading",
+      "kind": "text",
+      "x": 26,
+      "y": 139,
+      "width": 260,
+      "height": 28,
+      "fill": "#172e29",
+      "text": "Buttons",
+      "fontSize": 20
+    },
+    {
+      "id": "buttons-divider",
+      "kind": "rectangle",
+      "x": 26,
+      "y": 169,
+      "width": 428,
+      "height": 1,
+      "fill": "#d6dfd3"
+    },
+    {
+      "id": "badges-heading",
+      "kind": "text",
+      "x": 26,
+      "y": 246,
+      "width": 260,
+      "height": 28,
+      "fill": "#172e29",
+      "text": "Status badges",
+      "fontSize": 20
+    },
+    {
+      "id": "badges-divider",
+      "kind": "rectangle",
+      "x": 26,
+      "y": 276,
+      "width": 428,
+      "height": 1,
+      "fill": "#d6dfd3"
+    },
+    {
+      "id": "inputs-heading",
+      "kind": "text",
+      "x": 26,
+      "y": 341,
+      "width": 260,
+      "height": 28,
+      "fill": "#172e29",
+      "text": "Text inputs",
+      "fontSize": 20
+    },
+    {
+      "id": "inputs-divider",
+      "kind": "rectangle",
+      "x": 26,
+      "y": 371,
+      "width": 428,
+      "height": 1,
+      "fill": "#d6dfd3"
+    },
+    {
+      "id": "switches-heading",
+      "kind": "text",
+      "x": 26,
+      "y": 458,
+      "width": 260,
+      "height": 28,
+      "fill": "#172e29",
+      "text": "Switches",
+      "fontSize": 20
+    },
+    {
+      "id": "switches-divider",
+      "kind": "rectangle",
+      "x": 26,
+      "y": 488,
+      "width": 428,
+      "height": 1,
+      "fill": "#d6dfd3"
+    },
+    {
+      "id": "primary-button",
+      "kind": "rectangle",
+      "x": 26,
+      "y": 179,
+      "width": 130,
+      "height": 35,
+      "fill": "#163d34"
+    },
+    {
+      "id": "primary-button-text",
+      "kind": "text",
+      "x": 62,
+      "y": 183,
+      "width": 88,
+      "height": 27,
+      "fill": "#ffffff",
+      "text": "Continue",
+      "fontSize": 14
+    },
+    {
+      "id": "primary-button-variant",
+      "kind": "text",
+      "x": 26,
+      "y": 217,
+      "width": 130,
+      "height": 18,
+      "fill": "#50685b",
+      "text": "Primary",
+      "fontSize": 11
+    },
+    {
+      "id": "secondary-button",
+      "kind": "rectangle",
+      "x": 175,
+      "y": 179,
+      "width": 130,
+      "height": 35,
+      "fill": "#e4ebdf"
+    },
+    {
+      "id": "secondary-button-text",
+      "kind": "text",
+      "x": 211,
+      "y": 183,
+      "width": 88,
+      "height": 27,
+      "fill": "#163d34",
+      "text": "Continue",
+      "fontSize": 14
+    },
+    {
+      "id": "secondary-button-variant",
+      "kind": "text",
+      "x": 175,
+      "y": 217,
+      "width": 130,
+      "height": 18,
+      "fill": "#50685b",
+      "text": "Secondary",
+      "fontSize": 11
+    },
+    {
+      "id": "destructive-button",
+      "kind": "rectangle",
+      "x": 324,
+      "y": 179,
+      "width": 130,
+      "height": 35,
+      "fill": "#963b36"
+    },
+    {
+      "id": "destructive-button-text",
+      "kind": "text",
+      "x": 360,
+      "y": 183,
+      "width": 88,
+      "height": 27,
+      "fill": "#ffffff",
+      "text": "Remove",
+      "fontSize": 14
+    },
+    {
+      "id": "destructive-button-variant",
+      "kind": "text",
+      "x": 324,
+      "y": 217,
+      "width": 130,
+      "height": 18,
+      "fill": "#50685b",
+      "text": "Destructive",
+      "fontSize": 11
+    },
+    {
+      "id": "new-badge-left",
+      "kind": "ellipse",
+      "x": 26,
+      "y": 285,
+      "width": 24,
+      "height": 24,
+      "fill": "#e4ebdf"
+    },
+    {
+      "id": "new-badge-right",
+      "kind": "ellipse",
+      "x": 91,
+      "y": 285,
+      "width": 24,
+      "height": 24,
+      "fill": "#e4ebdf"
+    },
+    {
+      "id": "new-badge-body",
+      "kind": "rectangle",
+      "x": 38,
+      "y": 285,
+      "width": 65,
+      "height": 24,
+      "fill": "#e4ebdf"
+    },
+    {
+      "id": "new-badge-dot",
+      "kind": "ellipse",
+      "x": 37,
+      "y": 294,
+      "width": 6,
+      "height": 6,
+      "fill": "#395a49"
+    },
+    {
+      "id": "new-badge-text",
+      "kind": "text",
+      "x": 50,
+      "y": 287,
+      "width": 60,
+      "height": 20,
+      "fill": "#395a49",
+      "text": "New",
+      "fontSize": 12
+    },
+    {
+      "id": "new-badge-variant",
+      "kind": "text",
+      "x": 26,
+      "y": 313,
+      "width": 130,
+      "height": 18,
+      "fill": "#50685b",
+      "text": "Neutral",
+      "fontSize": 11
+    },
+    {
+      "id": "active-badge-left",
+      "kind": "ellipse",
+      "x": 175,
+      "y": 285,
+      "width": 24,
+      "height": 24,
+      "fill": "#dff1b9"
+    },
+    {
+      "id": "active-badge-right",
+      "kind": "ellipse",
+      "x": 240,
+      "y": 285,
+      "width": 24,
+      "height": 24,
+      "fill": "#dff1b9"
+    },
+    {
+      "id": "active-badge-body",
+      "kind": "rectangle",
+      "x": 187,
+      "y": 285,
+      "width": 65,
+      "height": 24,
+      "fill": "#dff1b9"
+    },
+    {
+      "id": "active-badge-dot",
+      "kind": "ellipse",
+      "x": 186,
+      "y": 294,
+      "width": 6,
+      "height": 6,
+      "fill": "#315419"
+    },
+    {
+      "id": "active-badge-text",
+      "kind": "text",
+      "x": 199,
+      "y": 287,
+      "width": 60,
+      "height": 20,
+      "fill": "#315419",
+      "text": "Active",
+      "fontSize": 12
+    },
+    {
+      "id": "active-badge-variant",
+      "kind": "text",
+      "x": 175,
+      "y": 313,
+      "width": 130,
+      "height": 18,
+      "fill": "#50685b",
+      "text": "Success",
+      "fontSize": 11
+    },
+    {
+      "id": "review-badge-left",
+      "kind": "ellipse",
+      "x": 324,
+      "y": 285,
+      "width": 24,
+      "height": 24,
+      "fill": "#f9e9b5"
+    },
+    {
+      "id": "review-badge-right",
+      "kind": "ellipse",
+      "x": 389,
+      "y": 285,
+      "width": 24,
+      "height": 24,
+      "fill": "#f9e9b5"
+    },
+    {
+      "id": "review-badge-body",
+      "kind": "rectangle",
+      "x": 336,
+      "y": 285,
+      "width": 65,
+      "height": 24,
+      "fill": "#f9e9b5"
+    },
+    {
+      "id": "review-badge-dot",
+      "kind": "ellipse",
+      "x": 335,
+      "y": 294,
+      "width": 6,
+      "height": 6,
+      "fill": "#715619"
+    },
+    {
+      "id": "review-badge-text",
+      "kind": "text",
+      "x": 348,
+      "y": 287,
+      "width": 60,
+      "height": 20,
+      "fill": "#715619",
+      "text": "Review",
+      "fontSize": 12
+    },
+    {
+      "id": "review-badge-variant",
+      "kind": "text",
+      "x": 324,
+      "y": 313,
+      "width": 130,
+      "height": 18,
+      "fill": "#50685b",
+      "text": "Warning",
+      "fontSize": 11
+    },
+    {
+      "id": "default-input-border",
+      "kind": "rectangle",
+      "x": 26,
+      "y": 384,
+      "width": 130,
+      "height": 38,
+      "fill": "#b7c9bc"
+    },
+    {
+      "id": "default-input-surface",
+      "kind": "rectangle",
+      "x": 27,
+      "y": 385,
+      "width": 128,
+      "height": 36,
+      "fill": "#ffffff"
+    },
+    {
+      "id": "default-input-text",
+      "kind": "text",
+      "x": 36,
+      "y": 390,
+      "width": 112,
+      "height": 26,
+      "fill": "#50685b",
+      "text": "Email address",
+      "fontSize": 12
+    },
+    {
+      "id": "default-input-variant",
+      "kind": "text",
+      "x": 26,
+      "y": 427,
+      "width": 130,
+      "height": 18,
+      "fill": "#50685b",
+      "text": "Default",
+      "fontSize": 11
+    },
+    {
+      "id": "focused-input-border",
+      "kind": "rectangle",
+      "x": 175,
+      "y": 384,
+      "width": 130,
+      "height": 38,
+      "fill": "#34785d"
+    },
+    {
+      "id": "focused-input-surface",
+      "kind": "rectangle",
+      "x": 177,
+      "y": 386,
+      "width": 126,
+      "height": 34,
+      "fill": "#ffffff"
+    },
+    {
+      "id": "focused-input-text",
+      "kind": "text",
+      "x": 185,
+      "y": 390,
+      "width": 112,
+      "height": 26,
+      "fill": "#163d34",
+      "text": "alex@example",
+      "fontSize": 12
+    },
+    {
+      "id": "focused-input-variant",
+      "kind": "text",
+      "x": 175,
+      "y": 427,
+      "width": 130,
+      "height": 18,
+      "fill": "#163d34",
+      "text": "Focused",
+      "fontSize": 11
+    },
+    {
+      "id": "error-input-border",
+      "kind": "rectangle",
+      "x": 324,
+      "y": 384,
+      "width": 130,
+      "height": 38,
+      "fill": "#ac433c"
+    },
+    {
+      "id": "error-input-surface",
+      "kind": "rectangle",
+      "x": 325,
+      "y": 385,
+      "width": 128,
+      "height": 36,
+      "fill": "#ffffff"
+    },
+    {
+      "id": "error-input-text",
+      "kind": "text",
+      "x": 334,
+      "y": 390,
+      "width": 112,
+      "height": 26,
+      "fill": "#963b36",
+      "text": "alex@",
+      "fontSize": 12
+    },
+    {
+      "id": "error-input-variant",
+      "kind": "text",
+      "x": 324,
+      "y": 427,
+      "width": 130,
+      "height": 18,
+      "fill": "#963b36",
+      "text": "Error",
+      "fontSize": 11
+    },
+    {
+      "id": "focused-input-caret",
+      "kind": "rectangle",
+      "x": 261,
+      "y": 395,
+      "width": 1,
+      "height": 16,
+      "fill": "#34785d"
+    },
+    {
+      "id": "off-switch-left",
+      "kind": "ellipse",
+      "x": 26,
+      "y": 504,
+      "width": 28,
+      "height": 28,
+      "fill": "#c8d7c9"
+    },
+    {
+      "id": "off-switch-right",
+      "kind": "ellipse",
+      "x": 54,
+      "y": 504,
+      "width": 28,
+      "height": 28,
+      "fill": "#c8d7c9"
+    },
+    {
+      "id": "off-switch-body",
+      "kind": "rectangle",
+      "x": 40,
+      "y": 504,
+      "width": 28,
+      "height": 28,
+      "fill": "#c8d7c9"
+    },
+    {
+      "id": "off-switch-thumb",
+      "kind": "ellipse",
+      "x": 30,
+      "y": 508,
+      "width": 20,
+      "height": 20,
+      "fill": "#ffffff"
+    },
+    {
+      "id": "off-switch-variant",
+      "kind": "text",
+      "x": 26,
+      "y": 538,
+      "width": 130,
+      "height": 18,
+      "fill": "#50685b",
+      "text": "Off",
+      "fontSize": 11
+    },
+    {
+      "id": "on-switch-left",
+      "kind": "ellipse",
+      "x": 175,
+      "y": 504,
+      "width": 28,
+      "height": 28,
+      "fill": "#2d7154"
+    },
+    {
+      "id": "on-switch-right",
+      "kind": "ellipse",
+      "x": 203,
+      "y": 504,
+      "width": 28,
+      "height": 28,
+      "fill": "#2d7154"
+    },
+    {
+      "id": "on-switch-body",
+      "kind": "rectangle",
+      "x": 189,
+      "y": 504,
+      "width": 28,
+      "height": 28,
+      "fill": "#2d7154"
+    },
+    {
+      "id": "on-switch-thumb",
+      "kind": "ellipse",
+      "x": 207,
+      "y": 508,
+      "width": 20,
+      "height": 20,
+      "fill": "#ffffff"
+    },
+    {
+      "id": "on-switch-variant",
+      "kind": "text",
+      "x": 175,
+      "y": 538,
+      "width": 130,
+      "height": 18,
+      "fill": "#50685b",
+      "text": "On",
+      "fontSize": 11
+    },
+    {
+      "id": "disabled-switch-left",
+      "kind": "ellipse",
+      "x": 324,
+      "y": 504,
+      "width": 28,
+      "height": 28,
+      "fill": "#dce5da"
+    },
+    {
+      "id": "disabled-switch-right",
+      "kind": "ellipse",
+      "x": 352,
+      "y": 504,
+      "width": 28,
+      "height": 28,
+      "fill": "#dce5da"
+    },
+    {
+      "id": "disabled-switch-body",
+      "kind": "rectangle",
+      "x": 338,
+      "y": 504,
+      "width": 28,
+      "height": 28,
+      "fill": "#dce5da"
+    },
+    {
+      "id": "disabled-switch-thumb",
+      "kind": "ellipse",
+      "x": 328,
+      "y": 508,
+      "width": 20,
+      "height": 20,
+      "fill": "#f3f6f1"
+    },
+    {
+      "id": "disabled-switch-variant",
+      "kind": "text",
+      "x": 324,
+      "y": 538,
+      "width": 130,
+      "height": 18,
+      "fill": "#50685b",
+      "text": "Disabled",
+      "fontSize": 11
+    }
+  ]
+}
