@@ -2,6 +2,7 @@ mod artboard_styles;
 mod backup;
 mod browser;
 mod drafts;
+mod storage;
 
 mod canvas_styles;
 mod dashboard_styles;
@@ -103,8 +104,17 @@ async fn bootstrap(root: &'static Root) {
     window().add_event_listener(
         events::Storage,
         |event: &StorageEvent| {
-            if event
-                .key()
+            let key = event.key();
+            if key.as_deref() == Some(projects::CHANGED) {
+                js::spawn(Box::new(async {
+                    projects::reload_cache().await;
+                    if projects::route().is_none() {
+                        render_dashboard();
+                    }
+                }));
+            }
+            if key
+                .as_deref()
                 .is_none_or(|key| key == drafts::CHANGED || key == components::library_key())
             {
                 js::spawn(Box::new(async {
@@ -120,6 +130,7 @@ async fn bootstrap(root: &'static Root) {
         },
         None,
     );
+    projects::initialize().await;
     let Some((id, server)) = projects::route() else {
         render_dashboard();
         js::spawn(Box::new(async {
@@ -130,7 +141,10 @@ async fn bootstrap(root: &'static Root) {
         return;
     };
     let Some(project) = projects::find(&id) else {
-        root.render(dashboard::missing());
+        root.render(match projects::warning() {
+            Some(error) => dashboard::unavailable(&error),
+            None => dashboard::missing(),
+        });
         return;
     };
     let bundle = match backup::saved(&project) {
@@ -464,7 +478,7 @@ async fn recover_previous(expected: &str) -> Result<Project, String> {
     });
     drafts::reload_cache().await?;
     let (document, library) = drafts::previous(&key, expected)?;
-    backup::restore_previous(&project, &screen_id, document, library)
+    backup::restore_previous(&project, &screen_id, document, library).await
 }
 
 async fn retry_save() -> Result<String, String> {

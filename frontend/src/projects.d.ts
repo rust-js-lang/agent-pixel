@@ -3,6 +3,8 @@
 import type { ProjectBundle } from "../../core/src/bundle.js";
 import type { Document, Scene } from "../../core/src/scene.js";
 
+export const CHANGED: string;
+
 export interface Project {
     id: string;
     title: string;
@@ -12,7 +14,6 @@ export const Project: {
     isPoster(project: Project): boolean;
     href(project: Project): string;
     storageKey(project: Project, server: boolean): string;
-    bundleKey(project: Project): string;
     screenKey(project: Project, server: boolean, screen?: string | null | undefined): string;
     initialScene(project: Project): Scene;
     load(project: Project, server: boolean): {
@@ -32,6 +33,14 @@ export function loadDocument(key: string): {
     _0: string;
 };
 
+export function initialize(): Promise<void>;
+
+export function reloadCache(): Promise<void>;
+
+export function savedBundle(id: string): string | null | undefined;
+
+export function warning(): string | null | undefined;
+
 export function list(): [
     Project[],
     string | null | undefined
@@ -46,18 +55,18 @@ export function route(): [
     boolean
 ] | null | undefined;
 
-export function create(title: string): {
+export function create(title: string): Promise<{
     TAG: "Ok";
     _0: Project;
 } | {
     TAG: "Err";
     _0: string;
-};
+}>;
 
-export function restoreBundle(bundle: ProjectBundle, json: string): {
+export function restoreBundle(bundle: ProjectBundle, json: string): Promise<{
     TAG: "Ok";
     _0: Project;
 } | {
     TAG: "Err";
     _0: string;
-};
+}>;

@@ -20,20 +20,20 @@ declare function export$(id: string): {
     _0: string;
 };
 
-export function restorePrevious(project: Project, screenId: string, document: Document, library?: ComponentVariant[] | null | undefined): {
+export function restorePrevious(project: Project, screenId: string, document: Document, library?: ComponentVariant[] | null | undefined): Promise<{
     TAG: "Ok";
     _0: Project;
 } | {
     TAG: "Err";
     _0: string;
-};
+}>;
 
-declare function import$(json: string): {
+declare function import$(json: string): Promise<{
     TAG: "Ok";
     _0: Project;
 } | {
     TAG: "Err";
     _0: string;
-};
+}>;
 
 export { export$ as export, import$ as import };

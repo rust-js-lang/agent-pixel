@@ -1,20 +1,12 @@
 //! IndexedDB draft revisions. The read cache is refreshed after storage notifications.
-use std::{
-    cell::{Cell, RefCell},
-    rc::Rc,
-};
+use std::{cell::RefCell, rc::Rc};
 
-use crate::{browser, projects::Project};
+use crate::{browser, projects::Project, storage};
 use js::{Promise, promise};
 use pixel_geometry::scene::{ComponentVariant, Document};
 use serde::{Deserialize, Serialize};
-use webapi::{
-    Event, EventTargetExt, IDBDatabase, IDBTransactionOptions, IDBVersionChangeEvent, events,
-    global,
-};
+use webapi::{Event, EventTargetExt, events, global};
 
-const DATABASE: &str = "agent-pixel";
-const STORE: &str = "drafts";
 pub const CHANGED: &str = "agent-pixel:drafts-changed";
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -36,104 +28,15 @@ pub enum Commit {
 }
 
 thread_local! {
-    static DB: Cell<Option<&'static IDBDatabase>> = const { Cell::new(None) };
     static CACHE: RefCell<Vec<Draft>> = const { RefCell::new(Vec::new()) };
 }
 
-async fn database() -> Result<&'static IDBDatabase, String> {
-    if let Some(db) = DB.get() {
-        return Ok(db);
-    }
-    let request = global::indexed_db()
-        .open(DATABASE, Some(1.0))
-        .map_err(crate::message)?;
-    let ready: Promise<Result<&IDBDatabase, String>> = promise::new(|resolve, _| {
-        request.add_event_listener(
-            events::Upgradeneeded,
-            move |_: &IDBVersionChangeEvent| {
-                if let Some(db) = request.result().and_then(js::downcast::<IDBDatabase>) {
-                    db.create_object_store(STORE, None);
-                }
-            },
-            None,
-        );
-        request.add_event_listener(
-            events::Success,
-            move |_: &IDBVersionChangeEvent| {
-                resolve(
-                    request
-                        .result()
-                        .and_then(js::downcast::<IDBDatabase>)
-                        .ok_or_else(|| "Draft database opened without a connection.".into()),
-                );
-            },
-            None,
-        );
-        request.add_event_listener(
-            events::Error,
-            move |_: &Event| {
-                resolve(Err("Could not open the browser draft database.".into()));
-            },
-            None,
-        );
-        request.add_event_listener(
-            events::Blocked,
-            move |_: &IDBVersionChangeEvent| {
-                resolve(Err("Another tab is blocking the draft database.".into()));
-            },
-            None,
-        );
-    });
-    let db = ready.await?;
-    db.add_event_listener(
-        events::Versionchange,
-        move |_: &IDBVersionChangeEvent| {
-            DB.set(None);
-            db.close();
-        },
-        None,
-    );
-    DB.set(Some(db));
-    Ok(db)
-}
-
 pub async fn reload_cache() -> Result<(), String> {
-    let db = database().await?;
-    let transaction = db.transaction(STORE, Some("readonly"), None);
-    let request = transaction.object_store(STORE).get_all(None, None);
-    let result: Promise<Result<Vec<Draft>, String>> = promise::new(|resolve, _| {
-        request.add_event_listener(
-            events::Success,
-            move |_: &Event| {
-                let drafts = request
-                    .result()
-                    .and_then(|value| js::json::stringify(value).ok().flatten())
-                    .ok_or_else(|| "Could not read saved drafts.".to_string())
-                    .and_then(|json| {
-                        serde_json::from_str::<Vec<String>>(&json)
-                            .map_err(|error| error.to_string())
-                    })
-                    .and_then(|values| {
-                        values
-                            .iter()
-                            .map(|value| {
-                                serde_json::from_str(value).map_err(|error| error.to_string())
-                            })
-                            .collect()
-                    });
-                resolve(drafts);
-            },
-            None,
-        );
-        request.add_event_listener(
-            events::Error,
-            move |_: &Event| {
-                resolve(Err("Could not read saved drafts.".into()));
-            },
-            None,
-        );
-    });
-    let drafts = result.await?;
+    let values = storage::read_records(storage::DRAFTS).await?;
+    let drafts = values
+        .iter()
+        .map(|value| serde_json::from_str(value).map_err(|error| error.to_string()))
+        .collect::<Result<Vec<Draft>, String>>()?;
     CACHE.with_borrow_mut(|cache| *cache = drafts);
     Ok(())
 }
@@ -213,15 +116,8 @@ pub async fn commit(
     title: &str,
     library: Option<Vec<ComponentVariant>>,
 ) -> Result<Commit, String> {
-    let db = database().await?;
-    let tx = db.transaction(
-        STORE,
-        Some("readwrite"),
-        Some(IDBTransactionOptions {
-            durability: Some("strict"),
-        }),
-    );
-    let store = tx.object_store(STORE);
+    let tx = storage::write_transaction(storage::DRAFTS).await?;
+    let store = tx.object_store(storage::DRAFTS);
     let request = store.get(key.as_str());
     let written_key = key.clone();
     let revision = global::crypto().random_uuid();

@@ -107,6 +107,14 @@ async function bootstrap(root) {
   const warning = result.TAG === "Err" ? result._0 : undefined;
   window.addEventListener("storage", (event) => {
     const key = event.key;
+    if (key === "agent-pixel:projects-changed") {
+      (async () => {
+        await Projects.reloadCache();
+        if (Projects.route() == null) {
+          renderDashboard();
+        }
+      })();
+    }
     if (key == null || key === Drafts.CHANGED || key === Components.libraryKey()) {
       (async () => {
         if ((await Drafts.reloadCache()).TAG === "Ok") {
@@ -119,6 +127,7 @@ async function bootstrap(root) {
       })();
     }
   });
+  await Projects.initialize();
   const value = Projects.route();
   if (value == null) {
     renderDashboard();
@@ -135,7 +144,8 @@ async function bootstrap(root) {
   const server = value[1];
   const project = Projects.find(id);
   if (project == null) {
-    root.render(Dashboard.missing());
+    const error = Projects.warning();
+    root.render(error != null ? Dashboard.unavailable(error) : Dashboard.missing());
     return;
   }
   const value$1 = Backup.saved(project);
@@ -637,7 +647,7 @@ export async function recoverPrevious(expected) {
     return result$1;
   }
   const [document, library] = result$1._0;
-  return Backup.restorePrevious(project, screenId, document, library);
+  return await Backup.restorePrevious(project, screenId, document, library);
 }
 
 export async function retrySave() {

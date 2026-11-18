@@ -88,7 +88,11 @@ pub fn BackupPanel(BackupProps { projects }: BackupProps) -> JSX::Element {
                             set_error.set(Some("Project bundle exceeds 2 MB.".into()));
                             return;
                         }
-                        match js::settle(file.text()).await.map_err(crate::message).and_then(|json| crate::backup::import(&json)) {
+                        let result = match js::settle(file.text()).await {
+                            Ok(json) => crate::backup::import(&json).await,
+                            Err(error) => Err(crate::message(error)),
+                        };
+                        match result {
                             Ok(project) => window_global::location().assign(&project.href()),
                             Err(error) => set_error.set(Some(error)),
                         }
@@ -121,10 +125,12 @@ pub fn Dashboard() -> JSX::Element {
                     <div><h1>"Design projects"</h1><p>"Open an artboard or start a new design."</p></div>
                     <form className={DASHBOARD.create_project()} action={move |data: &webapi::FormData| {
                         if let Some(FormDataEntryValue::Str(title)) = data.get("name") {
-                            match projects::create(&title) {
-                                Ok(project) => window_global::location().assign(&project.href()),
-                                Err(error) => set_error.set(Some(error)),
-                            }
+                            js::spawn(Box::new(async move {
+                                match projects::create(&title).await {
+                                    Ok(project) => window_global::location().assign(&project.href()),
+                                    Err(error) => set_error.set(Some(error)),
+                                }
+                            }));
                         }
                     }}>
                         <label htmlFor="project-name">"Project name"</label>

@@ -82,11 +82,16 @@ export function BackupPanel({ projects }) {
       {project.title}
     </option>
   ));
+  const className = DASHBOARD.backups;
+  const className$1 = DASHBOARD["create-project"];
+  const className$2 = DASHBOARD["project-controls"];
+  const className$3 = DASHBOARD["create-project"];
+  const className$4 = DASHBOARD["project-controls"];
   return (
-    <details className={DASHBOARD.backups}>
+    <details className={className}>
       <summary>Project backup</summary>
       <form
-        className={DASHBOARD["create-project"]}
+        className={className$1}
         action={(data) => {
           const id = data.get("project");
           if (typeof id === "string") {
@@ -102,7 +107,7 @@ export function BackupPanel({ projects }) {
         }}
       >
         <label htmlFor="backup-project">Project to export</label>
-        <div className={DASHBOARD["project-controls"]}>
+        <div className={className$2}>
           <select id="backup-project" name="project">
             {options}
           </select>
@@ -115,7 +120,7 @@ export function BackupPanel({ projects }) {
         </a>
       )}
       <form
-        className={DASHBOARD["create-project"]}
+        className={className$3}
         action={(data) => {
           const file = data.get("bundle");
           if (file !== null && typeof file !== "string") {
@@ -124,21 +129,26 @@ export function BackupPanel({ projects }) {
                 setError("Project bundle exceeds 2 MB.");
                 return;
               }
-              const result = await $settle(file.text());
-              const result$1 =
-                result.TAG === "Err" ? { TAG: "Err", _0: message$1(result._0) } : result;
-              const andThen = result$1.TAG === "Ok" ? Backup.import(result$1._0) : result$1;
-              if (andThen.TAG === "Ok") {
-                location.assign(Project.href(andThen._0));
+              const value = await $settle(file.text());
+              let result;
+              if (value.TAG === "Ok") {
+                const json = value._0;
+                result = await Backup.import(json);
               } else {
-                setError(andThen._0);
+                const error = value._0;
+                result = { TAG: "Err", _0: message$1(error) };
+              }
+              if (result.TAG === "Ok") {
+                location.assign(Project.href(result._0));
+              } else {
+                setError(result._0);
               }
             })();
           }
         }}
       >
         <label htmlFor="bundle-file">Project bundle to restore</label>
-        <div className={DASHBOARD["project-controls"]}>
+        <div className={className$4}>
           <input
             id="bundle-file"
             name="bundle"
@@ -179,12 +189,14 @@ export function Dashboard() {
             action={(data) => {
               const title = data.get("name");
               if (typeof title === "string") {
-                const value = Projects.create(title);
-                if (value.TAG === "Ok") {
-                  location.assign(Project.href(value._0));
-                } else {
-                  setError(value._0);
-                }
+                (async () => {
+                  const value = await Projects.create(title);
+                  if (value.TAG === "Ok") {
+                    location.assign(Project.href(value._0));
+                  } else {
+                    setError(value._0);
+                  }
+                })();
               }
             }}
           >

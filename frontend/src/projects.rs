@@ -1,13 +1,31 @@
-use crate::browser;
+use std::cell::RefCell;
+
+use crate::{browser, storage};
+use pixel_geometry::bundle::ProjectBundle;
 use pixel_geometry::scene::{Document, Scene};
 use serde::{Deserialize, Serialize};
 use webapi::global::crypto;
+use webapi::{Event, EventTargetExt, events};
 
 const ORBIT: &str = "orbit";
 const CURRENT: &str = "current";
 const CANOPY: &str = "canopy-ui";
 const WEB_APP: &str = "web-app";
-const CATALOG: &str = "agent-pixel:projects:v1";
+const LEGACY_CATALOG: &str = "agent-pixel:projects:v1";
+const MIGRATED: &str = "legacy-catalog-migrated";
+pub const CHANGED: &str = "agent-pixel:projects-changed";
+
+#[derive(Deserialize, Serialize)]
+struct SavedProject {
+    project: Project,
+    bundle: Option<String>,
+    order: i64,
+}
+
+thread_local! {
+    static CATALOG: RefCell<Vec<SavedProject>> = const { RefCell::new(Vec::new()) };
+    static WARNING: RefCell<Option<String>> = const { RefCell::new(None) };
+}
 
 #[derive(Clone, Default, Deserialize, Serialize)]
 pub struct Project {
@@ -33,7 +51,7 @@ impl Project {
         }
     }
 
-    pub fn bundle_key(&self) -> String {
+    fn legacy_bundle_key(&self) -> String {
         format!("agent-pixel:bundle:{}", self.id)
     }
 
@@ -71,11 +89,99 @@ pub fn load_document(key: &str) -> Result<Option<Document>, String> {
         .transpose()
 }
 
-fn saved_projects() -> Result<Vec<Project>, String> {
-    match browser::load_draft(CATALOG).map_err(crate::message)? {
-        Some(json) => serde_json::from_str(&json).map_err(|error| error.to_string()),
-        None => Ok(Vec::new()),
+pub async fn initialize() {
+    if let Err(error) = migrate_catalog().await {
+        WARNING.with_borrow_mut(|warning| *warning = Some(error));
+    } else {
+        reload_cache().await;
     }
+}
+
+pub async fn reload_cache() {
+    match read_catalog().await {
+        Ok(saved) => {
+            CATALOG.with_borrow_mut(|catalog| *catalog = saved);
+            WARNING.with_borrow_mut(|warning| *warning = None);
+        }
+        Err(error) => WARNING.with_borrow_mut(|warning| *warning = Some(error)),
+    }
+}
+
+async fn read_catalog() -> Result<Vec<SavedProject>, String> {
+    let values = storage::read_records(storage::PROJECTS).await?;
+    let mut records = Vec::new();
+    for value in &values {
+        if let Some(saved) = serde_json::from_str::<Option<SavedProject>>(value)
+            .map_err(|_| "Could not read your saved project list.")?
+        {
+            records.push(saved);
+        }
+    }
+    records.sort_by_key(|saved| saved.order);
+    Ok(records)
+}
+
+async fn migrate_catalog() -> Result<(), String> {
+    let tx = storage::write_transaction(storage::PROJECTS).await?;
+    let store = tx.object_store(storage::PROJECTS);
+    let request = store.get(MIGRATED);
+    request.add_event_listener(
+        events::Success,
+        move |_: &Event| {
+            if matches!(js::classify(request.result()), js::Kind::Undefined) {
+                let Ok(records) = legacy_records() else {
+                    tx.abort();
+                    return;
+                };
+                for (key, value) in records {
+                    store.add(value, Some(&key));
+                }
+                store.add("null", Some(&MIGRATED));
+            }
+        },
+        None,
+    );
+    storage::committed(
+        tx,
+        "Could not migrate saved projects. The original browser records are intact.",
+    )
+    .await
+}
+
+fn legacy_records() -> Result<Vec<(String, String)>, String> {
+    let Some(raw) = browser::load_draft(LEGACY_CATALOG).map_err(crate::message)? else {
+        return Ok(Vec::new());
+    };
+    let projects: Vec<Project> = serde_json::from_str(&raw).map_err(|error| error.to_string())?;
+    let mut records = Vec::new();
+    for (index, project) in projects.into_iter().enumerate() {
+        let bundle = browser::load_draft(&project.legacy_bundle_key()).map_err(crate::message)?;
+        if let Some(raw) = &bundle {
+            ProjectBundle::parse(raw)?;
+        }
+        let key = format!("project:{}", project.id);
+        let value = serde_json::to_string(&SavedProject {
+            project,
+            bundle,
+            order: index as i64,
+        })
+        .map_err(|error| error.to_string())?;
+        records.push((key, value));
+    }
+    Ok(records)
+}
+
+pub fn saved_bundle(id: &str) -> Option<String> {
+    CATALOG.with_borrow(|catalog| {
+        catalog
+            .iter()
+            .find(|saved| saved.project.id == id)
+            .and_then(|saved| saved.bundle.clone())
+    })
+}
+
+pub fn warning() -> Option<String> {
+    WARNING.with_borrow(Clone::clone)
 }
 
 pub fn list() -> (Vec<Project>, Option<String>) {
@@ -103,15 +209,11 @@ pub fn list() -> (Vec<Project>, Option<String>) {
     {
         projects.push(legacy);
     }
-    let warning = match saved_projects() {
-        Ok(saved) => {
-            projects.extend(saved.into_iter().rev());
-            None
-        }
-        Err(_) => Some("Could not read your saved project list.".into()),
-    };
+    CATALOG.with_borrow(|catalog| {
+        projects.extend(catalog.iter().rev().map(|saved| saved.project.clone()))
+    });
     projects.extend(crate::drafts::recoveries());
-    (projects, warning)
+    (projects, warning())
 }
 
 pub fn find(id: &str) -> Option<Project> {
@@ -148,40 +250,42 @@ pub fn route() -> Option<(String, bool)> {
     }
 }
 
-pub fn create(title: &str) -> Result<Project, String> {
+pub async fn create(title: &str) -> Result<Project, String> {
     let title = title.trim();
     if !pixel_geometry::bundle::valid_title(title) {
         return Err("Enter a name between 1 and 80 characters.".into());
     }
-    publish(title, None)
+    publish(title, None).await
 }
 
-pub fn restore_bundle(
-    bundle: &pixel_geometry::bundle::ProjectBundle,
-    json: &str,
-) -> Result<Project, String> {
-    publish(&bundle.title, Some(json))
+pub async fn restore_bundle(bundle: &ProjectBundle, json: &str) -> Result<Project, String> {
+    publish(&bundle.title, Some(json)).await
 }
 
-fn publish(title: &str, bundle: Option<&str>) -> Result<Project, String> {
-    let mut projects =
-        saved_projects().map_err(|_| "Could not read your project list.".to_string())?;
+async fn publish(title: &str, bundle: Option<&str>) -> Result<Project, String> {
+    if let Some(error) = warning() {
+        return Err(error);
+    }
     let project = Project {
         id: crypto().random_uuid(),
         title: title.into(),
     };
-    projects.push(project.clone());
-    let body = serde_json::to_string(&projects).map_err(|error| error.to_string())?;
-    let bundle_key = project.bundle_key();
-    if let Some(json) = bundle {
-        browser::save_draft(&bundle_key, Some(json))
-            .map_err(|_| "Could not store the project bundle in this browser.".to_string())?;
-    }
-    if browser::save_draft(CATALOG, Some(&body)).is_err() {
-        if bundle.is_some() {
-            let _ = browser::save_draft(&bundle_key, None);
-        }
-        return Err("Could not save the new project in this browser.".into());
-    }
+    let key = format!("project:{}", project.id);
+    let saved = SavedProject {
+        project: project.clone(),
+        bundle: bundle.map(str::to_owned),
+        order: js::date::now() as i64,
+    };
+    let value = serde_json::to_string(&saved).map_err(|error| error.to_string())?;
+    let tx = storage::write_transaction(storage::PROJECTS).await?;
+    let ready = storage::committed(tx, "Could not save the new project in this browser.");
+    tx.object_store(storage::PROJECTS).add(value, Some(&key));
+    ready.await?;
+    CATALOG.with_borrow_mut(|catalog| {
+        catalog.retain(|entry| entry.project.id != project.id);
+        catalog.push(saved);
+        catalog.sort_by_key(|entry| entry.order);
+    });
+    let _ = browser::save_draft(CHANGED, Some(&crypto().random_uuid()));
     Ok(project)
 }

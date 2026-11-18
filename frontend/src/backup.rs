@@ -1,5 +1,5 @@
 use crate::{
-    browser, components, journey,
+    components, journey,
     projects::{self, Project},
 };
 use pixel_geometry::{
@@ -8,7 +8,7 @@ use pixel_geometry::{
 };
 
 pub fn saved(project: &Project) -> Result<Option<ProjectBundle>, String> {
-    let raw = browser::load_draft(&project.bundle_key()).map_err(crate::message)?;
+    let raw = projects::saved_bundle(&project.id);
     raw.map(|raw| ProjectBundle::parse(&raw).map_err(str::to_owned))
         .transpose()
 }
@@ -62,7 +62,7 @@ fn capture(project: &Project) -> Result<ProjectBundle, String> {
     Ok(bundle)
 }
 
-pub fn restore_previous(
+pub async fn restore_previous(
     project: &Project,
     screen_id: &str,
     document: Document,
@@ -82,7 +82,7 @@ pub fn restore_previous(
         .chars()
         .take(80)
         .collect();
-    import(&serialize(bundle)?)
+    import(&serialize(bundle)?).await
 }
 
 fn serialize(mut bundle: ProjectBundle) -> Result<String, String> {
@@ -108,7 +108,7 @@ fn serialize(mut bundle: ProjectBundle) -> Result<String, String> {
     Ok(json)
 }
 
-pub fn import(json: &str) -> Result<Project, String> {
+pub async fn import(json: &str) -> Result<Project, String> {
     let bundle = ProjectBundle::parse(json)?;
-    projects::restore_bundle(&bundle, json)
+    projects::restore_bundle(&bundle, json).await
 }

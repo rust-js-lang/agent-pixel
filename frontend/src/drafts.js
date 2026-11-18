@@ -4,13 +4,13 @@
 
 import * as Browser from "./browser.js";
 import { Project, projectDeserialize_deserialize, projectSerialize_serialize } from "./projects.js";
+import * as Storage from "./storage.js";
 import {
   componentVariantDeserialize_deserialize,
   componentVariantSerialize_serialize,
   documentDeserialize_deserialize,
   documentSerialize_serialize,
 } from "../../core/src/scene.js";
-import { message } from "./lib.js";
 import {
   $assign,
   $borrowMut,
@@ -22,14 +22,11 @@ import {
   $json,
   $retain,
   $toJson,
-  $try,
   $unwrap,
   $withBorrow,
   $withBorrowMut,
 } from "@rust-js/std";
 
-const DATABASE = "agent-pixel";
-const STORE = "drafts";
 export const CHANGED = "agent-pixel:drafts-changed";
 
 function draftDeserialize_deserialize(json) {
@@ -107,107 +104,24 @@ function draftSerialize_serialize(draft, json) {
   json.endObject();
 }
 
-let db;
 const cache = [];
 
-async function database() {
-  let db$1 = db;
-  if (db$1 != null) {
-    return { TAG: "Ok", _0: db$1 };
-  }
-  const result = $try(() => indexedDB.open(DATABASE, 1));
-  const result$1 = result.TAG === "Err" ? { TAG: "Err", _0: message(result._0) } : result;
-  if (result$1.TAG === "Err") {
-    return result$1;
-  }
-  const request = result$1._0;
-  const ready = new Promise((resolve) => {
-    request.addEventListener("upgradeneeded", () => {
-      const value = request.result;
-      const db = value != null ? (value instanceof IDBDatabase ? value : undefined) : undefined;
-      if (db != null) {
-        db.createObjectStore(STORE);
-      }
-    });
-    request.addEventListener("success", () => {
-      const value = request.result;
-      const option = value != null ? (value instanceof IDBDatabase ? value : undefined) : undefined;
-      resolve(
-        option != null
-          ? { TAG: "Ok", _0: option }
-          : { TAG: "Err", _0: "Draft database opened without a connection." },
-      );
-    });
-    request.addEventListener("error", () => {
-      resolve({ TAG: "Err", _0: "Could not open the browser draft database." });
-    });
-    request.addEventListener("blocked", () => {
-      resolve({ TAG: "Err", _0: "Another tab is blocking the draft database." });
-    });
-  });
-  const result$2 = await ready;
-  if (result$2.TAG === "Err") {
-    return result$2;
-  }
-  db$1 = result$2._0;
-  db$1.addEventListener("versionchange", () => {
-    db = undefined;
-    db$1.close();
-  });
-  db = db$1;
-  return { TAG: "Ok", _0: db$1 };
-}
-
 export async function reloadCache() {
-  const result$1 = await database();
+  const result = await Storage.readRecords(Storage.DRAFTS);
+  if (result.TAG === "Err") {
+    return result;
+  }
+  const values = result._0;
+  const result$1 = $collectResults(
+    values.values().map((value) => {
+      const result = $fromJson(value, draftDeserialize_deserialize);
+      return result.TAG === "Err" ? { TAG: "Err", _0: $displayJsonError(result._0) } : result;
+    }),
+  );
   if (result$1.TAG === "Err") {
     return result$1;
   }
-  const db = result$1._0;
-  const transaction = db.transaction(STORE, "readonly");
-  const request = transaction.objectStore(STORE).getAll();
-  const result = new Promise((resolve) => {
-    request.addEventListener("success", () => {
-      const value = request.result;
-      function then(value) {
-        try {
-          return JSON.stringify(value);
-        } catch {
-          return;
-        }
-      }
-      const option = value != null ? then(value) : undefined;
-      const result =
-        option != null
-          ? { TAG: "Ok", _0: option }
-          : { TAG: "Err", _0: "Could not read saved drafts." };
-      function then$1(json) {
-        const result = $fromJson(json, $json.vec($json.string));
-        return result.TAG === "Err" ? { TAG: "Err", _0: $displayJsonError(result._0) } : result;
-      }
-      const result$1 = result.TAG === "Ok" ? then$1(result._0) : result;
-      const drafts =
-        result$1.TAG === "Ok"
-          ? $collectResults(
-              result$1._0.values().map((value) => {
-                const result = $fromJson(value, draftDeserialize_deserialize);
-                return result.TAG === "Err"
-                  ? { TAG: "Err", _0: $displayJsonError(result._0) }
-                  : result;
-              }),
-            )
-          : result$1;
-      resolve(drafts);
-    });
-    request.addEventListener("error", () => {
-      resolve({ TAG: "Err", _0: "Could not read saved drafts." });
-    });
-  });
-  const result$2 = await result;
-  if (result$2.TAG === "Err") {
-    return result$2;
-  }
-  const drafts = result$2._0;
+  const drafts = result$1._0;
   $withBorrowMut(
     cache,
     (cache) => {
@@ -342,13 +256,12 @@ export function previous(key, expected) {
 }
 
 export async function commit(key, expected, document, title, library) {
-  const result$1 = await database();
+  const result$1 = await Storage.writeTransaction(Storage.DRAFTS);
   if (result$1.TAG === "Err") {
     return result$1;
   }
-  const db = result$1._0;
-  const tx = db.transaction(STORE, "readwrite", { durability: "strict" });
-  const store = tx.objectStore(STORE);
+  const tx = result$1._0;
+  const store = tx.objectStore(Storage.DRAFTS);
   const request = store.get(key);
   const writtenKey = key;
   const revision = crypto.randomUUID();

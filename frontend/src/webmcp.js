@@ -371,13 +371,13 @@ function exportProject(input) {
   return Backup.export(id);
 }
 
-function importProject(input) {
+async function importProject(input) {
   const result = decode(input, "Provide a project bundle.", importProjectDeserialize_deserialize);
   if (result.TAG === "Err") {
     return result;
   }
   const { bundle } = result._0;
-  const result$1 = Backup.import($jsonValueText(bundle, false));
+  const result$1 = await Backup.import($jsonValueText(bundle, false));
   if (result$1.TAG === "Err") {
     return result$1;
   }
@@ -396,13 +396,12 @@ export async function registerDashboardTools() {
       true,
       exportProject,
     ),
-    dashboardTool(
-      "import_project",
-      "Validate a project bundle and restore it as a new project.",
-      IMPORT_SCHEMA,
-      false,
-      importProject,
-    ),
+    {
+      name: "import_project",
+      description: "Validate a project bundle and restore it as a new project.",
+      inputSchema: parse(IMPORT_SCHEMA),
+      execute: async (args) => toolResult(await importProject(args)),
+    },
     dashboardTool(
       "list_projects",
       "List projects in this browser with their stable IDs and titles.",
@@ -410,13 +409,13 @@ export async function registerDashboardTools() {
       true,
       listProjects,
     ),
-    dashboardTool(
-      "create_project",
-      "Create a named blank project and return its ID. Call open_project to open its editor.",
-      CREATE_SCHEMA,
-      false,
-      createProject,
-    ),
+    {
+      name: "create_project",
+      description:
+        "Create a named blank project and return its ID. Call open_project to open its editor.",
+      inputSchema: parse(CREATE_SCHEMA),
+      execute: async (args) => toolResult(await createProject(args)),
+    },
     dashboardTool(
       "open_project",
       "Open a project by ID in this tab. After navigation, discover the editor's WebMCP tools.",
@@ -471,13 +470,13 @@ function listProjects() {
   return result.TAG === "Err" ? { TAG: "Err", _0: $displayJsonError(result._0) } : result;
 }
 
-function createProject(input) {
+async function createProject(input) {
   const result = decode(input, "Provide a project title.", createProjectDeserialize_deserialize);
   if (result.TAG === "Err") {
     return result;
   }
   const { title } = result._0;
-  const result$1 = Projects.create(title);
+  const result$1 = await Projects.create(title);
   if (result$1.TAG === "Err") {
     return result$1;
   }
