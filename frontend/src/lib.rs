@@ -1,4 +1,6 @@
 mod browser;
+mod canvas_styles;
+
 mod components;
 mod dashboard;
 mod journey;

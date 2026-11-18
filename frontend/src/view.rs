@@ -1,4 +1,6 @@
+use crate::canvas_styles::STYLES;
 use crate::{Editor, edit, journey, select, sync_to_server, zoom};
+
 use pixel_geometry::{
     BOARD_HEIGHT, BOARD_WIDTH,
     scene::{ComponentInstance, Layer, Patch},
@@ -415,8 +417,8 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
                     {screen.map(|screen| journey_navigation(screen, false))}<hr /><h3>"Layers"</h3><div id="layers">{layer_list}</div>
                 </aside>
                 <section className="workspace" aria-label="Canvas">
-                    <div id="canvas-scroll" className="canvas-scroll" ref={zoom::attach}>
-                        <div className="canvas-stage">
+                    <div id="canvas-scroll" className={STYLES.canvas_scroll()} ref={zoom::attach}>
+                        <div className={STYLES.canvas_stage()}>
                     <div className="sheet" style={sheet_style}>
                         <div className="legend">{screen.map_or("ARTBOARD 01", |screen| screen.title)} <span>{format!("{BOARD_WIDTH} × {BOARD_HEIGHT}")}</span></div>
                         <div id="art" className={if !poster { "mockup" } else { "poster" }}>
@@ -427,15 +429,15 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
                     </div>
                         </div>
                     </div>
-                    <div className="canvas-toolbar">
+                    <div className={STYLES.canvas_toolbar()}>
                     <div className="tools">
                         <button id="rect" disabled={disabled} onClick={|_| add("rectangle")}>"▢  Rectangle +"</button>
                         <button id="ellipse" disabled={disabled} onClick={|_| add("ellipse")}>"○  Ellipse +"</button>
                         <button disabled={disabled} onClick={|_| edit(Patch { kind: Some("text".into()), text: Some("Label".into()), font_size: Some(20), width: Some(170), height: Some(32), fill: Some("#20231f".into()), ..Patch::default() })}>"T  Text +"</button>
                     </div>
-                    <div className="zoom-tools" role="group" aria-label="Canvas zoom">
+                    <div className={STYLES.zoom_tools()} role="group" aria-label="Canvas zoom">
                         <button type="button" aria-label="Zoom out" disabled={editor.zoom <= zoom::MIN} onClick={|_| zoom::step(false)}>"−"</button>
-                        <button className="zoom-value" type="button" title="Reset canvas zoom" aria-label={format!("Reset canvas zoom, current {zoom_label}")} onClick={|_| zoom::reset()}>{zoom_label}</button>
+                        <button className={STYLES.zoom_value()} type="button" title="Reset canvas zoom" aria-label={format!("Reset canvas zoom, current {zoom_label}")} onClick={|_| zoom::reset()}>{zoom_label}</button>
                         <button type="button" aria-label="Zoom in" disabled={editor.zoom >= zoom::MAX} onClick={|_| zoom::step(true)}>"+"</button>
                     </div>
                     </div>

@@ -1,0 +1,19 @@
+.canvas-scroll {
+  width: 100%; flex: 1 1 auto; min-height: 0; overflow: auto; overflow-anchor: none;
+  container-type: inline-size;
+}
+.canvas-stage {
+  --fit-width: min(calc(100cqw - 48px), 480px, 65vh);
+  min-width: 100%; min-height: 100%; width: max-content;
+  display: grid; place-items: center; padding: 24px;
+}
+.canvas-toolbar { display: flex; flex-shrink: 0; padding: 9px 10px 14px; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.zoom-tools { display: flex; align-items: stretch; border: 1px solid #adb9a9; border-radius: 7px; background: #fafbf7; }
+.zoom-tools button { border: 0; background: none; min-width: 28px; padding: 5px 7px; }
+.zoom-tools button:hover { background: #e3ebdf; }
+.zoom-tools button:disabled { opacity: .45; }
+.zoom-tools .zoom-value { width: 51px; font-variant-numeric: tabular-nums; font-size: 12px; }
+
+@media (max-width: 760px) {
+  .canvas-stage { --fit-width: min(calc(100cqw - 24px), 480px, 48vh); padding: 12px; }
+}

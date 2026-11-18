@@ -45,3 +45,15 @@ test("pinch-style wheel zoom stays in the canvas, and the workspace scrolls at h
   await page.getByRole("button", { name: /Reset canvas zoom, current/ }).click();
   await expect(page.getByRole("button", { name: "Reset canvas zoom, current 100%" })).toBeVisible();
 });
+
+test("canvas styles load from the bundled CSS Module with scoped class names", async ({ page }) => {
+  await page.goto("/?project=orbit");
+  const controls = page.getByRole("group", { name: "Canvas zoom" });
+  await expect(controls).toHaveCSS("display", "flex");
+  const classNames = await controls.evaluate(node => Array.from(node.classList));
+  expect(classNames).toHaveLength(1);
+  expect(classNames).not.toContain("zoom-tools");
+  await page.addStyleTag({ content: ".zoom-tools { display: none; }" });
+  await expect(controls).toBeVisible();
+  await expect(page.locator("#canvas-scroll")).toHaveCSS("overflow", "auto");
+});
