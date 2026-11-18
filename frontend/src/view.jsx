@@ -14,6 +14,7 @@ import {
   recoverPrevious,
   retrySave,
   select,
+  showWorkspacePanel,
   status,
   syncToServer,
 } from "./lib.js";
@@ -839,23 +840,53 @@ export function editor(editor) {
   const className$2 = SHELL.brand;
   const className$3 = SHELL.crumb;
   const className$4 = EDITOR_STYLES.layout;
-  const className$5 = EDITOR_STYLES.eyebrow;
-  const value =
-    screen != null && (screen.action != null || editor.screens.length > 1)
-      ? journeyNavigation(editor, screen, false)
-      : undefined;
-  const children = layerPanel(scene, selected, disabled);
-  const className$6 = EDITOR_STYLES.workspace;
-  const className$7 = CANVAS["canvas-scroll"];
+  const className$5 = EDITOR_STYLES["left-dock"];
+  const className$6 = EDITOR_STYLES.rail;
+  const className$7 = EDITOR_STYLES["left-panel"];
+  const value = editor.assetsOpen ? (
+    <>
+      <h2>Assets</h2>
+      <p>
+        <label>
+          Place image
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            disabled={disabled}
+            onChange={(event) => {
+              const input = event.currentTarget;
+              const file = input.files?.item(0);
+              if (file != null) {
+                input.value = "";
+                addImage(file);
+              }
+            }}
+          />
+        </label>
+      </p>
+      {componentPicker(disabled, board)}
+    </>
+  ) : (
+    <>
+      <h2>{documentTitle}</h2>
+      {screen != null &&
+        (screen.action != null || editor.screens.length > 1) &&
+        journeyNavigation(editor, screen, false)}
+      <h3>Layers</h3>
+      {layerPanel(scene, selected, disabled)}
+    </>
+  );
+  const className$8 = EDITOR_STYLES.workspace;
+  const className$9 = CANVAS["canvas-scroll"];
   const ref = Zoom.attach;
-  const className$8 = CANVAS["canvas-stage"];
-  const className$9 = EDITOR_STYLES.legend;
+  const className$10 = CANVAS["canvas-stage"];
+  const className$11 = EDITOR_STYLES.legend;
   const value$1 = screen?.title ?? "ARTBOARD 01";
   const style = { aspectRatio: boardAspect(board) };
   const value$2 = poster ? ARTBOARD.artboard : `${ARTBOARD.artboard} ${ARTBOARD.mockup}`;
-  const className$10 = poster ? EDITOR_STYLES.imprint : undefined;
-  const className$11 = EDITOR_STYLES.shapes;
-  const children$1 = poster && (
+  const className$12 = poster ? EDITOR_STYLES.imprint : undefined;
+  const className$13 = EDITOR_STYLES.shapes;
+  const children = poster && (
     <div className={EDITOR_STYLES.caption}>
       <b>Orbit study.</b>
       <small>
@@ -863,62 +894,23 @@ export function editor(editor) {
       </small>
     </div>
   );
-  const className$12 = CANVAS["canvas-toolbar"];
-  const className$13 = EDITOR_STYLES.tools;
+  const className$14 = CANVAS["canvas-toolbar"];
+  const className$15 = EDITOR_STYLES.tools;
   const captured = board.width;
-  const className$14 = CANVAS["zoom-tools"];
+  const className$16 = CANVAS["zoom-tools"];
   const disabled$1 = editor.zoom <= Zoom.MIN;
-  const className$15 = CANVAS["zoom-value"];
+  const className$17 = CANVAS["zoom-value"];
   const onClick = Zoom.reset;
   const disabled$2 = editor.zoom >= Zoom.MAX;
-  const className$16 = EDITOR_STYLES.properties;
-  const className$17 = EDITOR_STYLES.eyebrow;
-  const value$3 = componentPicker(disabled, board);
-  const value$4 = artboardSize(board, disabled);
+  const className$18 = EDITOR_STYLES.properties;
+  const value$3 = artboardSize(board, disabled);
   const entry = editor.history.undo.at(-1);
   const condition = entry != null;
-  const children$2 = condition
+  const children$1 = condition
     ? `${entry.label} · ${entry.author === "Agent" ? "Agent" : "You"}`
     : undefined;
   const href = editor.recovery != null ? Project.href(editor.recovery) : undefined;
-  const value$5 = Drafts.hasPrevious(Editor.storageKey(editor)) && !editor.busy;
-  const className$18 = EDITOR_STYLES.agent;
-  const children$3 = editor.saveFailed && editor.recovery == null && (
-    <>
-      <p>Download a copy before leaving to keep your unsaved edits.</p>
-      <button
-        type="button"
-        disabled={editor.busy}
-        onClick={() => {
-          const value = Backup.downloadUnsaved();
-          if (value.TAG === "Err") {
-            status(value._0);
-          }
-        }}
-      >
-        Download unsaved project
-      </button>
-      <button
-        type="button"
-        disabled={editor.busy}
-        onClick={async () => {
-          await retrySave();
-        }}
-      >
-        Retry draft save
-      </button>
-    </>
-  );
-  const children$4 = editor.server && (
-    <div id="server" className={EDITOR_STYLES.server}>
-      <button disabled={disabled} onClick={() => syncToServer(false)}>
-        Save to server
-      </button>
-      <button disabled={disabled} onClick={() => syncToServer(true)}>
-        Load server copy
-      </button>
-    </div>
-  );
+  const value$4 = Drafts.hasPrevious(Editor.storageKey(editor)) && !editor.busy;
   return (
     <div className={className}>
       <header className={className$1}>
@@ -932,39 +924,60 @@ export function editor(editor) {
         <a href="https://github.com/rust-js-lang/agent-pixel/blob/main/DESIGN.md">Design doc ↗</a>
       </header>
       <main className={className$4}>
-        <aside aria-label="Layers panel">
-          <div className={className$5}>DOCUMENT</div>
-          <h2>{documentTitle}</h2>
-          <p>{poster ? "Poster composition" : "Artboard"}</p>
-          {value}
-          <hr />
-          <h3>Layers</h3>
-          {children}
-        </aside>
-        <section className={className$6} aria-label="Canvas">
-          <div id="canvas-scroll" className={className$7} ref={ref}>
-            <div className={className$8}>
+        <div className={className$5}>
+          <nav className={className$6} aria-label="Workspace panels">
+            <button
+              type="button"
+              aria-pressed={!editor.assetsOpen}
+              onClick={() => showWorkspacePanel(false)}
+            >
+              <span aria-hidden="true">▤</span>File
+            </button>
+            <button
+              type="button"
+              aria-pressed={editor.assetsOpen}
+              onClick={() => showWorkspacePanel(true)}
+            >
+              <span aria-hidden="true">◇</span>Assets
+            </button>
+          </nav>
+          <aside
+            aria-label={editor.assetsOpen ? "Assets panel" : "Layers panel"}
+            className={className$7}
+          >
+            {value}
+          </aside>
+        </div>
+        <section className={className$8} aria-label="Canvas">
+          <div
+            id="canvas-scroll"
+            className={className$9}
+            tabIndex={0}
+            aria-label="Scrollable artboard"
+            ref={ref}
+          >
+            <div className={className$10}>
               <div style={sheetStyle}>
-                <div className={className$9}>
+                <div className={className$11}>
                   {value$1}
                   <span>{`${board.width} × ${board.height}`}</span>
                 </div>
                 <div id="art" style={style} className={value$2}>
                   {poster && (
-                    <div className={className$10}>
+                    <div className={className$12}>
                       FORM STUDIES<span>SERIES 01 / 03</span>
                     </div>
                   )}
-                  <div id="shapes" className={className$11}>
+                  <div id="shapes" className={className$13}>
                     {shapeList}
                   </div>
-                  {children$1}
+                  {children}
                 </div>
               </div>
             </div>
           </div>
-          <div className={className$12}>
-            <div className={className$13}>
+          <div className={className$14} role="group" aria-label="Design tools">
+            <div className={className$15}>
               <button
                 type="button"
                 disabled={disabled || editor.history.undo.length === 0}
@@ -1008,66 +1021,47 @@ export function editor(editor) {
                 {"T  Text +"}
               </button>
             </div>
-            <div className={className$14} role="group" aria-label="Canvas zoom">
-              <button
-                type="button"
-                aria-label="Zoom out"
-                disabled={disabled$1}
-                onClick={() => Zoom.step(false)}
-              >
-                −
-              </button>
-              <button
-                className={className$15}
-                type="button"
-                title="Reset canvas zoom"
-                aria-label={`Reset canvas zoom, current ${zoomLabel}`}
-                onClick={onClick}
-              >
-                {zoomLabel}
-              </button>
-              <button
-                type="button"
-                aria-label="Zoom in"
-                disabled={disabled$2}
-                onClick={() => Zoom.step(true)}
-              >
-                +
-              </button>
-            </div>
+          </div>
+          <div className={className$16} role="group" aria-label="Canvas zoom">
+            <button
+              type="button"
+              aria-label="Zoom out"
+              disabled={disabled$1}
+              onClick={() => Zoom.step(false)}
+            >
+              −
+            </button>
+            <button
+              className={className$17}
+              type="button"
+              title="Reset canvas zoom"
+              aria-label={`Reset canvas zoom, current ${zoomLabel}`}
+              onClick={onClick}
+            >
+              {zoomLabel}
+            </button>
+            <button
+              type="button"
+              aria-label="Zoom in"
+              disabled={disabled$2}
+              onClick={() => Zoom.step(true)}
+            >
+              +
+            </button>
           </div>
         </section>
-        <aside aria-label="Inspector" className={className$16}>
-          <div className={className$17}>INSPECTOR</div>
-          <p>
-            <label>
-              Place image
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                disabled={disabled}
-                onChange={(event) => {
-                  const input = event.currentTarget;
-                  const file = input.files?.item(0);
-                  if (file != null) {
-                    input.value = "";
-                    addImage(file);
-                  }
-                }}
-              />
-            </label>
-          </p>
+        <aside aria-label="Inspector" className={className$18}>
+          <h2>Design</h2>
           {value$3}
-          {value$4}
           {properties}
           {parentControl}
-          {condition && <p aria-label="Last edit">{children$2}</p>}
+          {condition && <p aria-label="Last edit">{children$1}</p>}
           {editor.recovery != null && (
             <p>
               <a href={href}>Open recovery project</a>
             </p>
           )}
-          {value$5 && (
+          {value$4 && (
             <button
               type="button"
               onClick={() => {
@@ -1087,11 +1081,45 @@ export function editor(editor) {
               Copy previous checkpoint
             </button>
           )}
-          {children$3}
-          <span id="agent" className={className$18}>
+          {editor.saveFailed && editor.recovery == null && (
+            <>
+              <p>Download a copy before leaving to keep your unsaved edits.</p>
+              <button
+                type="button"
+                disabled={editor.busy}
+                onClick={() => {
+                  const value = Backup.downloadUnsaved();
+                  if (value.TAG === "Err") {
+                    status(value._0);
+                  }
+                }}
+              >
+                Download unsaved project
+              </button>
+              <button
+                type="button"
+                disabled={editor.busy}
+                onClick={async () => {
+                  await retrySave();
+                }}
+              >
+                Retry draft save
+              </button>
+            </>
+          )}
+          <span id="agent" className={EDITOR_STYLES.agent}>
             {editor.agent}
           </span>
-          {children$4}
+          {editor.server && (
+            <div id="server" className={EDITOR_STYLES.server}>
+              <button disabled={disabled} onClick={() => syncToServer(false)}>
+                Save to server
+              </button>
+              <button disabled={disabled} onClick={() => syncToServer(true)}>
+                Load server copy
+              </button>
+            </div>
+          )}
         </aside>
       </main>
       <footer className={SHELL.footer} role="status" id="status">

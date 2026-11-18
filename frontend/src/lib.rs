@@ -53,6 +53,7 @@ struct Editor {
     seed: Option<Scene>,
     pinned_library: Option<Vec<ComponentVariant>>,
     poster: bool,
+    assets_open: bool,
     handoff: Option<String>,
     preview: bool,
     zoom: f64,
@@ -204,6 +205,11 @@ async fn bootstrap(root: &'static Root) {
     if let Err(error) = start(warning).await {
         status(error);
     }
+}
+
+fn show_workspace_panel(assets: bool) {
+    EDITOR.with_borrow_mut(|editor| editor.assets_open = assets);
+    render();
 }
 
 fn render_dashboard() {

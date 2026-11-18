@@ -39,6 +39,21 @@ struct Annotations {
     read_only_hint: bool,
 }
 
+const PANEL_SCHEMA: &str = r#"{"type":"object","required":["panel"],"additionalProperties":false,"properties":{"panel":{"enum":["file","assets"],"type":"string"}}}"#;
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WorkspacePanel {
+    panel: Panel,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum Panel {
+    File,
+    Assets,
+}
+
 const READ_SCHEMA: &str = r#"{"type":"object","properties":{},"additionalProperties":false}"#;
 const EDIT_SCHEMA: &str = r##"{
     "type":"object","minProperties":1,"additionalProperties":false,
@@ -149,6 +164,20 @@ fn history_tool(name: &'static str, description: &'static str, command: &'static
 
 pub async fn register_editor_tools() -> Result<bool, &'static JsError> {
     register(vec![
+        Tool {
+            name: "show_workspace_panel",
+            description: "Show the editor's File panel with screens and layers or the Assets panel with image and component placement.",
+            input_schema: parse(PANEL_SCHEMA),
+            annotations: None,
+            execute: Box::new(|input| js::promise(async move {
+                let result = decode(input, "Choose the file or assets panel.").map(|WorkspacePanel { panel }| {
+                    let assets = matches!(panel, Panel::Assets);
+                    crate::show_workspace_panel(assets);
+                    if assets { r#"{"panel":"assets"}"#.into() } else { r#"{"panel":"file"}"#.into() }
+                });
+                tool_result(result)
+            })),
+        },
         Tool {
             name: "get_save_status",
             description: "Read the browser draft save state, durable revision, and any conflict recovery project.",

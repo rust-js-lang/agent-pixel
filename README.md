@@ -76,7 +76,7 @@ The [dashboard WebMCP test](e2e/dashboard-webmcp.spec.js) exercises the handoff 
 
 ## Reuse Canopy UI components
 
-In an editor, expand **Canopy UI components**, choose a variant, set its position, and select **Insert component**. Insertions create linked instances of the Canopy UI variants saved in this browser. Edit the main component in Canopy UI to update instances in open editors and when a project is reopened. Select any layer of an instance to switch its variant in the inspector. Existing independent copies remain editable.
+In an editor, open **Assets** and expand **Canopy UI components**, choose a variant, set its position, and select **Insert component**. Insertions create linked instances of the Canopy UI variants saved in this browser. Edit the main component in Canopy UI to update instances in open editors and when a project is reopened. Select any layer of an instance to switch its variant in the inspector. Existing independent copies remain editable.
 
 An agent can call `list_components` for the variant IDs, then call `insert_component` with `{ id, x, y }`. The coordinates place the variant's top-left corner in artboard pixels. The result includes the new layer IDs and the updated scene. Use the instance ID from `scene.instances` with `switch_component_variant` and a variant ID from the same family.
 
@@ -102,7 +102,7 @@ Use `{ op: "resize_artboard", width, height }` in `apply_edits` to resize alongs
 
 ## Canvas and layer hierarchy
 
-The canvas scrolls within the editor. The toolbar and side panels stay in place, and long panels scroll independently. On phones the Layers panel and inspector sit above and below the canvas.
+The left rail toggles between **File** for screens and layers and **Assets** for image and component placement. The Design inspector stays on the right. The design toolbar floats at the bottom of the canvas, and zoom stays in the upper corner. The canvas uses a compact, outlined arrow cursor. The canvas and long panels scroll independently. Agents can open either panel with `show_workspace_panel`. On phones the Layers panel and inspector sit above and below the canvas.
 
 Enter a name and use **+ Group** in the Layers panel. Select a layer, linked component, or group and change its **Parent group** in the inspector. Use the disclosure arrow to expand or collapse children. **Ungroup** lifts the children into the group's parent and preserves them.
 
@@ -116,7 +116,7 @@ For multi-layer agent edits, call `read_design` for its current revision and the
 
 ## Image assets
 
-Use **Place image** in the inspector to upload PNG, JPEG, or WebP. Agents supply the same formats as base64 data URLs in `apply_edits`. Images must be at most 512 KiB and 16 megapixels each. An artboard holds up to 1.2 MB of encoded image data, and a portable bundle holds up to 2 MB total.
+Open **Assets** on the left and use **Place image** to upload PNG, JPEG, or WebP. Agents supply the same formats as base64 data URLs in `apply_edits`. Images must be at most 512 KiB and 16 megapixels each. An artboard holds up to 1.2 MB of encoded image data, and a portable bundle holds up to 2 MB total.
 
 Each image layer references an asset stored with its scene revision. Repeated placements of the same named file reuse that asset within the artboard. Undo, checkpoint recovery, and portable backups keep the asset data needed to reopen the design.
 

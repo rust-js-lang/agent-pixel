@@ -57,6 +57,21 @@ impl Styles {
         unreachable!()
     }
 
+    #[cfg_attr(rust_js, rust_js::link_name = "get left-dock")]
+    pub fn left_dock(&self) -> String {
+        unreachable!()
+    }
+
+    #[cfg_attr(rust_js, rust_js::link_name = "get left-panel")]
+    pub fn left_panel(&self) -> String {
+        unreachable!()
+    }
+
+    #[cfg_attr(rust_js, rust_js::link_name = "get rail")]
+    pub fn rail(&self) -> String {
+        unreachable!()
+    }
+
     #[cfg_attr(rust_js, rust_js::link_name = "get layout")]
     pub fn layout(&self) -> String {
         unreachable!()

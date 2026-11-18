@@ -21,6 +21,7 @@ import {
   renderDashboard,
   retrySave,
   saveStatus,
+  showWorkspacePanel,
 } from "./lib.js";
 import {
   $debugJsonError,
@@ -34,6 +35,29 @@ import {
   $unwrap,
   $unwrapOk,
 } from "@rust-js/std";
+
+const PANEL_SCHEMA =
+  '{"type":"object","required":["panel"],"additionalProperties":false,"properties":{"panel":{"enum":["file","assets"],"type":"string"}}}';
+
+function workspacePanelDeserialize_deserialize(json) {
+  return json.struct(
+    "struct WorkspacePanel",
+    [["panel", panelDeserialize_deserialize]],
+    ([panel]) => ({ panel }),
+    { deny: true },
+  );
+}
+
+function panelDeserialize_deserialize(json) {
+  return json.enum("Panel", ["file", "assets"], (variant, content) => {
+    if (variant === "file") {
+      content.unit();
+      return "File";
+    }
+    content.unit();
+    return "Assets";
+  });
+}
 
 const READ_SCHEMA = '{"type":"object","properties":{},"additionalProperties":false}';
 const EDIT_SCHEMA = `{
@@ -164,6 +188,26 @@ function historyTool(name, description, command) {
 
 export async function registerEditorTools() {
   return await register([
+    {
+      name: "show_workspace_panel",
+      description:
+        "Show the editor's File panel with screens and layers or the Assets panel with image and component placement.",
+      inputSchema: parse(PANEL_SCHEMA),
+      async execute(input) {
+        const result$1 = decode(
+          input,
+          "Choose the file or assets panel.",
+          workspacePanelDeserialize_deserialize,
+        );
+        function map({ panel }) {
+          const assets = panel === "Assets";
+          showWorkspacePanel(assets);
+          return assets ? '{"panel":"assets"}' : '{"panel":"file"}';
+        }
+        const result = result$1.TAG === "Ok" ? { TAG: "Ok", _0: map(result$1._0) } : result$1;
+        return toolResult(result);
+      },
+    },
     {
       name: "get_save_status",
       description:

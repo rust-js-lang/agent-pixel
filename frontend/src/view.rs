@@ -596,13 +596,42 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
                 <a href="https://github.com/rust-js-lang/agent-pixel/blob/main/DESIGN.md">"Design doc ↗"</a>
             </header>
             <main className={EDITOR_STYLES.layout()}>
-                <aside aria-label="Layers panel">
-                    <div className={EDITOR_STYLES.eyebrow()}>"DOCUMENT"</div><h2>{document_title}</h2>
-                    <p>{if poster { "Poster composition" } else { "Artboard" }}</p>
-                    {screen.filter(|screen| screen.action.is_some() || editor.screens.len() > 1).map(|screen| journey_navigation(editor, screen, false))}<hr /><h3>"Layers"</h3>{layer_panel(scene, selected, disabled)}
-                </aside>
+                <div className={EDITOR_STYLES.left_dock()}>
+                    <nav className={EDITOR_STYLES.rail()} aria-label="Workspace panels">
+                        <button type="button" aria-pressed={!editor.assets_open} onClick={|_| crate::show_workspace_panel(false)}>
+                            <span aria-hidden="true">"▤"</span>"File"
+                        </button>
+                        <button type="button" aria-pressed={editor.assets_open} onClick={|_| crate::show_workspace_panel(true)}>
+                            <span aria-hidden="true">"◇"</span>"Assets"
+                        </button>
+                    </nav>
+                    <aside aria-label={if editor.assets_open { "Assets panel" } else { "Layers panel" }} className={EDITOR_STYLES.left_panel()}>
+                        {if editor.assets_open { jsx! {
+                            <>
+                                <h2>"Assets"</h2>
+                                <p><label>"Place image"
+                                    <input type="file" accept="image/png,image/jpeg,image/webp" disabled={disabled} onChange={|event| {
+                                        let input = event.current_target();
+                                        if let Some(file) = input.files().and_then(|files| files.item(0)) {
+                                            input.set_value("");
+                                            crate::add_image(file);
+                                        }
+                                    }} />
+                                </label></p>
+                                {component_picker(disabled, board)}
+                            </>
+                        } } else { jsx! {
+                            <>
+                                <h2>{document_title}</h2>
+                                {screen.filter(|screen| screen.action.is_some() || editor.screens.len() > 1).map(|screen| journey_navigation(editor, screen, false))}
+                                <h3>"Layers"</h3>
+                                {layer_panel(scene, selected, disabled)}
+                            </>
+                        } }}
+                    </aside>
+                </div>
                 <section className={EDITOR_STYLES.workspace()} aria-label="Canvas">
-                    <div id="canvas-scroll" className={CANVAS.canvas_scroll()} ref={zoom::attach}>
+                    <div id="canvas-scroll" className={CANVAS.canvas_scroll()} tabIndex={0} aria-label="Scrollable artboard" ref={zoom::attach}>
                         <div className={CANVAS.canvas_stage()}>
                     <div style={sheet_style}>
                         <div className={EDITOR_STYLES.legend()}>{screen.map_or("ARTBOARD 01", |screen| screen.title.as_str())} <span>{format!("{} × {}", board.width, board.height)}</span></div>
@@ -614,7 +643,7 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
                     </div>
                         </div>
                     </div>
-                    <div className={CANVAS.canvas_toolbar()}>
+                    <div className={CANVAS.canvas_toolbar()} role="group" aria-label="Design tools">
                     <div className={EDITOR_STYLES.tools()}>
                         <button type="button" disabled={disabled || editor.history.undo.is_empty()} onClick={|_| crate::history_action(true)}>"Undo"</button>
                         <button type="button" disabled={disabled || editor.history.redo.is_empty()} onClick={|_| crate::history_action(false)}>"Redo"</button>
@@ -623,25 +652,15 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
                         <button id="ellipse" disabled={disabled} onClick={|_| add("ellipse")}>"○  Ellipse +"</button>
                         <button disabled={disabled} onClick={move |_| edit(Patch { kind: Some("text".into()), text: Some("Label".into()), font_size: Some(20), width: Some(170.min(board.width)), height: Some(32), fill: Some("#20231f".into()), ..Patch::default() })}>"T  Text +"</button>
                     </div>
+                    </div>
                     <div className={CANVAS.zoom_tools()} role="group" aria-label="Canvas zoom">
                         <button type="button" aria-label="Zoom out" disabled={editor.zoom <= zoom::MIN} onClick={|_| zoom::step(false)}>"−"</button>
                         <button className={CANVAS.zoom_value()} type="button" title="Reset canvas zoom" aria-label={format!("Reset canvas zoom, current {zoom_label}")} onClick={|_| zoom::reset()}>{zoom_label}</button>
                         <button type="button" aria-label="Zoom in" disabled={editor.zoom >= zoom::MAX} onClick={|_| zoom::step(true)}>"+"</button>
                     </div>
-                    </div>
                 </section>
                 <aside aria-label="Inspector" className={EDITOR_STYLES.properties()}>
-                    <div className={EDITOR_STYLES.eyebrow()}>"INSPECTOR"</div>
-                    <p><label>"Place image"
-                        <input type="file" accept="image/png,image/jpeg,image/webp" disabled={disabled} onChange={|event| {
-                            let input = event.current_target();
-                            if let Some(file) = input.files().and_then(|files| files.item(0)) {
-                                input.set_value("");
-                                crate::add_image(file);
-                            }
-                        }} />
-                    </label></p>
-                    {component_picker(disabled, board)}
+                    <h2>"Design"</h2>
                     {artboard_size(board, disabled)}
                     {properties}
                     {parent_control}

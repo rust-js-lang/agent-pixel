@@ -8,6 +8,7 @@ test("reuse a library variant in another project from the editor", async ({ page
   await page.getByRole("link", { name: "Projects", exact: false }).click();
   await page.getByLabel("Project name").fill("Checkout");
   await page.getByRole("button", { name: /New project/ }).click();
+  await page.getByRole("button", { name: "Assets", exact: true }).click();
   await page.getByText("Canopy UI components", { exact: true }).click();
   await page.getByLabel("Component variant").selectOption("primary-button");
   await page.getByLabel("Component X").fill("32");

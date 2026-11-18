@@ -9,6 +9,7 @@ async function openEditor(page, project = "orbit") {
 
 test("an uploaded image decodes and survives reloading the editor", async ({ page }) => {
   await openEditor(page);
+  await page.getByRole("button", { name: "Assets", exact: true }).click();
   const bytes = Buffer.from(image.dataUrl.split(",")[1], "base64");
   await page.getByLabel("Place image").setInputFiles({ name: image.name, mimeType: "image/png", buffer: bytes });
   const placed = page.locator("#shapes").getByRole("img", { name: image.name });
@@ -21,6 +22,7 @@ test("an uploaded image decodes and survives reloading the editor", async ({ pag
   const layer = saved.scene.layers.find(layer => layer.kind === "image");
   expect(saved.scene.assets).toEqual([{ id: layer.imageId, image }]);
 
+  await page.getByRole("button", { name: "Assets", exact: true }).click();
   for (const [mimeType, extension] of [["image/jpeg", "jpg"], ["image/webp", "webp"]]) {
     const dataUrl = await page.evaluate(mimeType => {
       const canvas = document.createElement("canvas");

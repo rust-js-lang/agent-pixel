@@ -65,6 +65,7 @@ export const editor = {
   project: { id: "", title: "" },
   screens: [],
   poster: false,
+  assetsOpen: false,
   preview: false,
   zoom: 0,
   busy: false,
@@ -213,6 +214,17 @@ async function bootstrap(root) {
     root.render(Dashboard.unavailable(value$1._0));
     return;
   }
+}
+
+export function showWorkspacePanel(assets) {
+  $withBorrowMut(
+    editor,
+    (editor) => {
+      editor.assetsOpen = assets;
+    },
+    true,
+  );
+  render();
 }
 
 export function renderDashboard() {
