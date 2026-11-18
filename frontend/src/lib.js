@@ -7,6 +7,7 @@ import { Project } from "./projects.js";
 import * as Projects from "./projects.js";
 import { createRoot } from "react-dom/client";
 import {
+  batchSerialize_serialize,
   componentInsertSerialize_serialize,
   componentSwitchSerialize_serialize,
   componentVariantSerialize_serialize,
@@ -43,6 +44,8 @@ import {
 let root;
 export const editor = {
   document: { revision: 0n },
+  revision: "",
+  history: { undo: [], redo: [] },
   server: false,
   project: { id: "", title: "" },
   screens: [],
@@ -132,8 +135,9 @@ export function mount() {
         editor.poster = Project.isPoster(project);
         if (bundle != null) {
           const index = $position(bundle.screens, (screen) => screenId === screen.info.id) ?? 0;
-          editor.screens = bundle.screens.map((screen) => screen.info);
-          editor.screen = $index(editor.screens, index);
+          editor.screens = bundle.screens.map((screen) => ({ ...screen.info }));
+          const value = $index(editor.screens, index);
+          editor.screen = { ...value };
           editor.seed = bundle.screens[index]?.scene;
           editor.pinnedLibrary = bundle.library;
           editor.poster = bundle.poster;
@@ -204,7 +208,7 @@ export function message(error) {
 }
 
 async function request(command, body) {
-  const result = await Transport.request(command, body);
+  const result = await Transport.request(command, body, "Person");
   if (result.TAG === "Err") {
     return result;
   }
@@ -271,9 +275,13 @@ async function start() {
     design = result._0;
   }
   const captured = design.scene;
+  const captured$1 = design.revision;
+  const captured$2 = design.history;
   $withBorrowMut(
     editor,
     (editor) => {
+      editor.revision = captured$1;
+      editor.history = captured$2;
       Editor.replaceScene(editor, captured);
       editor.document.revision = saved.revision;
       editor.status =
@@ -332,11 +340,11 @@ export async function readDesign() {
   return result$1.TAG === "Err" ? { TAG: "Err", _0: $displayJsonError(result$1._0) } : result$1;
 }
 
-export async function editDesign(json) {
-  return await changeDesign("edit", json);
+export async function editDesign(json, author) {
+  return await changeDesign("edit", json, author);
 }
 
-export async function placeComponent(id, x, y) {
+export async function placeComponent(id, x, y, author) {
   const result = Components.component(id);
   if (result.TAG === "Err") {
     return result;
@@ -353,10 +361,10 @@ export async function placeComponent(id, x, y) {
     return result$2;
   }
   const json = result$2._0;
-  return await changeDesign("insert", json);
+  return await changeDesign("insert", json, author);
 }
 
-export async function changeVariant(id, variant) {
+export async function changeVariant(id, variant, author) {
   const result = Components.component(variant);
   if (result.TAG === "Err") {
     return result;
@@ -372,14 +380,17 @@ export async function changeVariant(id, variant) {
     return result$2;
   }
   const json = result$2._0;
-  return await changeDesign("switch", json);
+  return await changeDesign("switch", json, author);
 }
 
 async function refreshLinkedComponents() {
   const hasInstances = $withBorrow(
     editor,
     (editor) =>
-      !editor.busy && editor.document.scene != null && editor.document.scene.instances.length !== 0,
+      !editor.busy &&
+      (editor.history.undo.length !== 0 ||
+        editor.history.redo.length !== 0 ||
+        (editor.document.scene != null && editor.document.scene.instances.length !== 0)),
     true,
   );
   if (!hasInstances) {
@@ -412,12 +423,16 @@ async function refreshLinkedComponents() {
   })();
   if (result.TAG === "Ok") {
     const captured = result._0.scene;
+    const captured$1 = result._0.revision;
+    const captured$2 = result._0.history;
     const changed = $withBorrowMut(
       editor,
       (editor) => {
         if ($eq(editor.document.scene, captured)) {
           return false;
         }
+        editor.revision = captured$1;
+        editor.history = captured$2;
         editor.document.scene = captured;
         if (Editor.saveLocal(editor).TAG === "Ok") {
           editor.status = "Linked components updated from Canopy UI";
@@ -436,28 +451,39 @@ async function refreshLinkedComponents() {
   }
 }
 
-async function changeDesign(command, json) {
+export async function changeDesign(command, json, author) {
   if ($withBorrow(editor, (editor) => editor.busy, true)) {
     return { TAG: "Err", _0: "Wait for the document server operation." };
   }
-  const result = await request(command, json);
+  const result = await Transport.request(command, json, author);
   if (result.TAG === "Err") {
     return result;
   }
-  const design = result._0;
-  const result$1 = $toJson(design, designSerialize_serialize, false);
+  const reply = result._0;
+  const result$1 = $fromJson(reply, designDeserialize_deserialize);
   const result$2 =
     result$1.TAG === "Err" ? { TAG: "Err", _0: $displayJsonError(result$1._0) } : result$1;
   if (result$2.TAG === "Err") {
     return result$2;
   }
-  const body = result$2._0;
+  const design = result$2._0;
   const captured = design.scene;
-  const captured$1 = design.edited;
+  const captured$1 = design.revision;
+  const captured$2 = design.history;
+  const captured$3 = design.edited;
   $withBorrowMut(
     editor,
     (editor) => {
-      Editor.select(editor, captured$1);
+      function fallback() {
+        const old = editor.selected;
+        editor.selected = undefined;
+        const keep = (id) => captured.layers.some((layer) => layer.id === id);
+        return old != null && keep(old) ? old : undefined;
+      }
+      const selected = captured$3 ?? fallback();
+      Editor.select(editor, selected);
+      editor.revision = captured$1;
+      editor.history = captured$2;
       editor.document.scene = captured;
       editor.status =
         Editor.saveLocal(editor).TAG === "Err"
@@ -469,7 +495,7 @@ async function changeDesign(command, json) {
     true,
   );
   render();
-  return { TAG: "Ok", _0: body };
+  return { TAG: "Ok", _0: reply };
 }
 
 export function edit(patch) {
@@ -480,7 +506,7 @@ export function edit(patch) {
       "Serialize patch",
       $debugJsonError,
     );
-    const value = await editDesign(json);
+    const value = await editDesign(json, "Person");
     if (value.TAG === "Err") {
       $withBorrowMut(
         editor,
@@ -492,6 +518,55 @@ export function edit(patch) {
       status(value._0);
     }
   })();
+}
+
+export function historyAction(undo) {
+  const revision = $withBorrow(editor, (editor) => editor.revision, true);
+  const command = undo ? "undo" : "redo";
+  (async () => {
+    const value = await changeDesign(
+      command,
+      $unwrapOk(
+        $toJson(
+          revision,
+          (value, json) => {
+            json.string(value);
+          },
+          false,
+        ),
+        "Serialize revision",
+        $debugJsonError,
+      ),
+      "Person",
+    );
+    if (value.TAG === "Err") {
+      status(value._0);
+    }
+  })();
+}
+
+export function deleteSelection() {
+  const [id, revision] = $withBorrow(editor, (editor) => [editor.selected, editor.revision], true);
+  if (id != null) {
+    const batch = {
+      revision,
+      edits: [{ TAG: "Delete", id }],
+    };
+    (async () => {
+      const value = await changeDesign(
+        "batch",
+        $unwrapOk(
+          $toJson(batch, batchSerialize_serialize, false),
+          "Serialize deletion",
+          $debugJsonError,
+        ),
+        "Person",
+      );
+      if (value.TAG === "Err") {
+        status(value._0);
+      }
+    })();
+  }
 }
 
 export function select(id) {
@@ -598,9 +673,13 @@ async function loadServer() {
   }
   const design = result$2._0;
   const captured = design.scene;
+  const captured$1 = design.revision;
+  const captured$2 = design.history;
   return $withBorrowMut(
     editor,
     (editor) => {
+      editor.revision = captured$1;
+      editor.history = captured$2;
       Editor.replaceScene(editor, captured);
       editor.document.revision = saved.revision;
       const result = Browser.saveDraft(Project.storageKey(editor.project, editor.server));

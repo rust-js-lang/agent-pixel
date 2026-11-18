@@ -8,11 +8,13 @@ import {
   $byteLen,
   $clamp,
   $displayJsonError,
+  $eq,
   $fromJson,
   $index,
   $json,
   $min,
   $position,
+  $removeOutOfBounds,
   $retain,
   $splice,
   $stripPrefix,
@@ -606,6 +608,28 @@ export const Scene = {
     return { TAG: "Ok" };
   },
 
+  deleteLayer(scene, id) {
+    const index = scene.instances.findIndex((instance) => instance.layerIds.includes(id));
+    if (index !== -1) {
+      const instance = scene.instances.splice(index, 1)[0];
+      $retain(scene.layers, (layer) => !instance.layerIds.includes(layer.id));
+    } else {
+      const position = $position(scene.layers, (layer) => layer.id === id);
+      const result =
+        position != null ? { TAG: "Ok", _0: position } : { TAG: "Err", _0: "Unknown layer." };
+      if (result.TAG === "Err") {
+        return result;
+      }
+      const index = result._0;
+      const result$1 = scene.layers;
+      if (index >= result$1.length) {
+        $removeOutOfBounds(result$1, index);
+      }
+      result$1.splice(index, 1);
+    }
+    return { TAG: "Ok" };
+  },
+
   edit(scene, patch, newId) {
     const { id, kind, x, y, width, height, fill, text, fontSize } = patch;
     if (
@@ -693,12 +717,153 @@ export const Scene = {
   },
 };
 
+export function authorSerialize_serialize(author, json) {
+  if (author === "Person") {
+    json.variant("person");
+  } else {
+    json.variant("agent");
+  }
+}
+
+export function authorDeserialize_deserialize(json) {
+  return json.enum("Author", ["person", "agent"], (variant, content) => {
+    if (variant === "person") {
+      content.unit();
+      return "Person";
+    }
+    content.unit();
+    return "Agent";
+  });
+}
+
+export function historyEntrySerialize_serialize(historyEntry, json) {
+  json.beginObject();
+  json.key("label");
+  json.string(historyEntry.label);
+  json.key("author");
+  authorSerialize_serialize(historyEntry.author, json);
+  json.endObject();
+}
+
+export function historyEntryDeserialize_deserialize(json) {
+  return json.struct(
+    "struct HistoryEntry",
+    [
+      ["label", $json.string],
+      ["author", authorDeserialize_deserialize],
+    ],
+    ([label, author]) => ({ label, author }),
+  );
+}
+
+export function historySerialize_serialize(history, json) {
+  json.beginObject();
+  json.key("undo");
+  json.beginArray();
+  for (const item of history.undo) {
+    json.element();
+    historyEntrySerialize_serialize(item, json);
+  }
+  json.endArray();
+  json.key("redo");
+  json.beginArray();
+  for (const item of history.redo) {
+    json.element();
+    historyEntrySerialize_serialize(item, json);
+  }
+  json.endArray();
+  json.endObject();
+}
+
+export function historyDeserialize_deserialize(json) {
+  return json.struct(
+    "struct History",
+    [
+      ["undo", $json.vec(historyEntryDeserialize_deserialize)],
+      ["redo", $json.vec(historyEntryDeserialize_deserialize)],
+    ],
+    ([undo, redo]) => ({ undo, redo }),
+  );
+}
+
+export function batchDeserialize_deserialize(json) {
+  return json.struct(
+    "struct Batch",
+    [
+      ["revision", $json.string],
+      ["edits", $json.vec(editDeserialize_deserialize)],
+    ],
+    ([revision, edits]) => ({ revision, edits }),
+    { deny: true },
+  );
+}
+
+export function batchSerialize_serialize(batch, json) {
+  json.beginObject();
+  json.key("revision");
+  json.string(batch.revision);
+  json.key("edits");
+  json.beginArray();
+  for (const item of batch.edits) {
+    json.element();
+    editSerialize_serialize(item, json);
+  }
+  json.endArray();
+  json.endObject();
+}
+
+export function editDeserialize_deserialize(json) {
+  return json.internallyTagged(
+    "op",
+    "internally tagged enum Edit",
+    ["patch", "delete"],
+    (variant, content) => {
+      if (variant === "patch") {
+        return content.struct(
+          "struct variant Edit::Patch",
+          [["layer", patchDeserialize_deserialize]],
+          ([layer]) => ({ TAG: "Patch", layer }),
+          { deny: true },
+        );
+      }
+      return content.struct(
+        "struct variant Edit::Delete",
+        [["id", $json.string]],
+        ([id]) => ({ TAG: "Delete", id }),
+        { deny: true },
+      );
+    },
+  );
+}
+
+export function editSerialize_serialize(edit, json) {
+  if (edit.TAG === "Patch") {
+    json.beginObject();
+    json.key("op");
+    json.string("patch");
+    json.key("layer");
+    patchSerialize_serialize(edit.layer, json);
+    json.endObject();
+  } else {
+    json.beginObject();
+    json.key("op");
+    json.string("delete");
+    json.key("id");
+    json.string(edit.id);
+    json.endObject();
+  }
+}
+
 export function designSerialize_serialize(design, json) {
   json.beginObject();
   json.key("board");
   dimensionsSerialize_serialize(design.board, json);
   json.key("scene");
   sceneSerialize_serialize(design.scene, json);
+  json.key("revision");
+  json.string(design.revision);
+  json.key("history");
+  historySerialize_serialize(design.history, json);
   if (design.edited != null) {
     json.key("edited");
     json.string(design.edited);
@@ -721,10 +886,19 @@ export function designDeserialize_deserialize(json) {
     [
       ["board", dimensionsDeserialize_deserialize],
       ["scene", sceneDeserialize_deserialize],
+      ["revision", $json.string],
+      ["history", historyDeserialize_deserialize],
       ["edited", $json.option($json.string)],
       ["inserted", $json.option($json.vec($json.string))],
     ],
-    ([board, scene, edited, inserted]) => ({ board, scene, edited, inserted }),
+    ([board, scene, revision, history, edited, inserted]) => ({
+      board,
+      scene,
+      revision,
+      history,
+      edited,
+      inserted,
+    }),
   );
 }
 
@@ -748,108 +922,291 @@ export function dimensionsDeserialize_deserialize(json) {
   );
 }
 
-export function workerCommand(scene, command, input, id) {
-  let inserted;
-  let edited;
-  switch (command) {
-    case "read":
-      edited = undefined;
-      break;
-    case "restore": {
-      const result = $fromJson(input, sceneDeserialize_deserialize);
-      const result$1 = result.TAG === "Err" ? { TAG: "Err", _0: "Unsupported document." } : result;
-      if (result$1.TAG === "Err") {
-        return result$1;
-      }
-      const restored = result$1._0;
-      const result$2 = Scene.validate(restored);
-      if (result$2.TAG === "Err") {
-        return result$2;
-      }
-      $assign(scene, restored);
-      edited = undefined;
-      break;
+const HISTORY_LIMIT = 32;
+const BATCH_LIMIT = 100;
+
+export const Session = {
+  new(scene) {
+    return {
+      scene,
+      revision: "",
+      undo: [],
+      redo: [],
+      library: [],
+    };
+  },
+
+  commit(session, candidate, revision, label, author) {
+    if ($eq(candidate, session.scene)) {
+      return;
     }
-    case "edit": {
-      const result = $fromJson(input, patchDeserialize_deserialize);
-      const result$1 =
-        result.TAG === "Err" ? { TAG: "Err", _0: "Specify valid shape properties." } : result;
-      if (result$1.TAG === "Err") {
-        return result$1;
-      }
-      const patch = result$1._0;
-      const result$2 = Scene.edit(scene, patch, id);
-      if (result$2.TAG === "Err") {
-        return result$2;
-      }
-      edited = result$2._0;
-      break;
+    const previous = session.scene;
+    session.scene = candidate;
+    session.undo.push({
+      scene: previous,
+      entry: {
+        label,
+        author,
+      },
+    });
+    if (session.undo.length > HISTORY_LIMIT) {
+      session.undo.shift();
     }
-    case "insert": {
-      const result = $fromJson(input, componentInsertDeserialize_deserialize);
-      const result$1 =
-        result.TAG === "Err" ? { TAG: "Err", _0: "Specify a valid component." } : result;
-      if (result$1.TAG === "Err") {
-        return result$1;
-      }
-      const component = result$1._0;
-      const result$2 = Scene.insertComponent(scene, component, id);
-      if (result$2.TAG === "Err") {
-        return result$2;
-      }
-      const ids = result$2._0;
-      const selected = ids[0];
-      inserted = ids;
-      edited = selected;
-      break;
+    session.redo.length = 0;
+    session.revision = revision;
+  },
+
+  travel(session, undo, revision) {
+    let from;
+    let to;
+    if (undo) {
+      from = session.undo;
+      to = session.redo;
+    } else {
+      from = session.redo;
+      to = session.undo;
     }
-    case "switch": {
-      const result = $fromJson(input, componentSwitchDeserialize_deserialize);
-      const result$1 =
-        result.TAG === "Err" ? { TAG: "Err", _0: "Specify a valid component variant." } : result;
-      if (result$1.TAG === "Err") {
-        return result$1;
-      }
-      const switch$ = result$1._0;
-      const result$2 = Scene.switchComponent(scene, switch$);
-      if (result$2.TAG === "Err") {
-        return result$2;
-      }
-      edited = result$2._0;
-      break;
+    const option = from.at(-1);
+    const result =
+      option != null ? { TAG: "Ok", _0: option } : { TAG: "Err", _0: "No edit in that direction." };
+    if (result.TAG === "Err") {
+      return result;
     }
-    case "refresh_components": {
-      const result$2 = $fromJson(input, $json.vec(componentVariantDeserialize_deserialize));
-      const result =
-        result$2.TAG === "Err" ? { TAG: "Err", _0: "Invalid component library." } : result$2;
+    let transaction = result._0;
+    const candidate = {
+      ...transaction.scene,
+      layers: transaction.scene.layers.map((item) => ({ ...item })),
+      instances: transaction.scene.instances.map((item) => ({ ...item })),
+    };
+    if (candidate.instances.length !== 0) {
+      const result = Scene.refreshComponents(candidate, session.library);
       if (result.TAG === "Err") {
         return result;
       }
-      const variants = result._0;
-      const result$1 = Scene.refreshComponents(scene, variants);
-      if (result$1.TAG === "Err") {
-        return result$1;
-      }
-      edited = undefined;
-      break;
     }
-    default:
-      return { TAG: "Err", _0: "Unknown command." };
-  }
-  const design = {
-    scene: {
-      ...scene,
-      layers: scene.layers.map((item) => ({ ...item })),
-      instances: scene.instances.map((item) => ({ ...item })),
-    },
-    board: {
-      width: BOARD_WIDTH,
-      height: BOARD_HEIGHT,
-    },
-    edited,
-    inserted,
-  };
-  const result = $toJson(design, designSerialize_serialize, false);
-  return result.TAG === "Err" ? { TAG: "Err", _0: $displayJsonError(result._0) } : result;
-}
+    const previous = session.scene;
+    session.scene = candidate;
+    transaction = $unwrap(from.pop(), "History entry");
+    to.push({
+      scene: previous,
+      entry: transaction.entry,
+    });
+    session.revision = revision;
+    return { TAG: "Ok" };
+  },
+
+  applyBatch(session, batch, id, author) {
+    if (batch.revision !== session.revision) {
+      return { TAG: "Err", _0: "Design changed. Read its latest revision before applying edits." };
+    }
+    if (batch.edits.length === 0 || batch.edits.length > BATCH_LIMIT) {
+      return { TAG: "Err", _0: "Submit between 1 and 100 edits." };
+    }
+    const candidate = {
+      ...session.scene,
+      layers: session.scene.layers.map((item) => ({ ...item })),
+      instances: session.scene.instances.map((item) => ({ ...item })),
+    };
+    let selected;
+    for (const [index, edit] of batch.edits.entries()) {
+      if (edit.TAG === "Patch") {
+        const result = Scene.edit(candidate, edit.layer, `${id}-${index}`);
+        if (result.TAG === "Err") {
+          return result;
+        }
+        selected = result._0;
+      } else {
+        const result = Scene.deleteLayer(candidate, edit.id);
+        if (result.TAG === "Err") {
+          return result;
+        }
+        selected = undefined;
+      }
+    }
+    Session.commit(session, candidate, id, "Edit layers", author);
+    return { TAG: "Ok", _0: selected };
+  },
+
+  command(session, command, input, id, author) {
+    let inserted;
+    let edited;
+    switch (command) {
+      case "read":
+        edited = undefined;
+        break;
+      case "restore": {
+        const result = $fromJson(input, sceneDeserialize_deserialize);
+        const result$1 =
+          result.TAG === "Err" ? { TAG: "Err", _0: "Unsupported document." } : result;
+        if (result$1.TAG === "Err") {
+          return result$1;
+        }
+        const restored = result$1._0;
+        const result$2 = Scene.validate(restored);
+        if (result$2.TAG === "Err") {
+          return result$2;
+        }
+        $assign(session, Session.new(restored));
+        session.revision = id;
+        edited = undefined;
+        break;
+      }
+      case "undo":
+      case "redo": {
+        const result = $fromJson(input, $json.string);
+        const result$1 =
+          result.TAG === "Err"
+            ? { TAG: "Err", _0: "Provide the current design revision." }
+            : result;
+        if (result$1.TAG === "Err") {
+          return result$1;
+        }
+        const revision = result$1._0;
+        if (revision !== session.revision) {
+          return {
+            TAG: "Err",
+            _0: "Design changed. Read its latest revision before using history.",
+          };
+        }
+        const result$2 = Session.travel(session, command === "undo", id);
+        if (result$2.TAG === "Err") {
+          return result$2;
+        }
+        edited = undefined;
+        break;
+      }
+      case "batch": {
+        const result = $fromJson(input, batchDeserialize_deserialize);
+        const result$1 =
+          result.TAG === "Err" ? { TAG: "Err", _0: "Specify valid edits and a revision." } : result;
+        if (result$1.TAG === "Err") {
+          return result$1;
+        }
+        const batch = result$1._0;
+        const result$2 = Session.applyBatch(session, batch, id, author);
+        if (result$2.TAG === "Err") {
+          return result$2;
+        }
+        edited = result$2._0;
+        break;
+      }
+      case "edit": {
+        const result = $fromJson(input, patchDeserialize_deserialize);
+        const result$1 =
+          result.TAG === "Err" ? { TAG: "Err", _0: "Specify valid shape properties." } : result;
+        if (result$1.TAG === "Err") {
+          return result$1;
+        }
+        const patch = result$1._0;
+        const candidate = {
+          ...session.scene,
+          layers: session.scene.layers.map((item) => ({ ...item })),
+          instances: session.scene.instances.map((item) => ({ ...item })),
+        };
+        const result$2 = Scene.edit(candidate, patch, id);
+        if (result$2.TAG === "Err") {
+          return result$2;
+        }
+        const selected = result$2._0;
+        Session.commit(session, candidate, id, "Edit layer", author);
+        edited = selected;
+        break;
+      }
+      case "insert": {
+        const result = $fromJson(input, componentInsertDeserialize_deserialize);
+        const result$1 =
+          result.TAG === "Err" ? { TAG: "Err", _0: "Specify a valid component." } : result;
+        if (result$1.TAG === "Err") {
+          return result$1;
+        }
+        const component = result$1._0;
+        const candidate = {
+          ...session.scene,
+          layers: session.scene.layers.map((item) => ({ ...item })),
+          instances: session.scene.instances.map((item) => ({ ...item })),
+        };
+        const result$2 = Scene.insertComponent(candidate, component, id);
+        if (result$2.TAG === "Err") {
+          return result$2;
+        }
+        const ids = result$2._0;
+        const selected = ids[0];
+        Session.commit(session, candidate, id, "Insert component", author);
+        inserted = ids;
+        edited = selected;
+        break;
+      }
+      case "switch": {
+        const result = $fromJson(input, componentSwitchDeserialize_deserialize);
+        const result$1 =
+          result.TAG === "Err" ? { TAG: "Err", _0: "Specify a valid component variant." } : result;
+        if (result$1.TAG === "Err") {
+          return result$1;
+        }
+        const switch$ = result$1._0;
+        const candidate = {
+          ...session.scene,
+          layers: session.scene.layers.map((item) => ({ ...item })),
+          instances: session.scene.instances.map((item) => ({ ...item })),
+        };
+        const result$2 = Scene.switchComponent(candidate, switch$);
+        if (result$2.TAG === "Err") {
+          return result$2;
+        }
+        const selected = result$2._0;
+        Session.commit(session, candidate, id, "Switch component variant", author);
+        edited = selected;
+        break;
+      }
+      case "refresh_components": {
+        const result = $fromJson(input, $json.vec(componentVariantDeserialize_deserialize));
+        const result$1 =
+          result.TAG === "Err" ? { TAG: "Err", _0: "Invalid component library." } : result;
+        if (result$1.TAG === "Err") {
+          return result$1;
+        }
+        const variants = result$1._0;
+        const candidate = {
+          ...session.scene,
+          layers: session.scene.layers.map((item) => ({ ...item })),
+          instances: session.scene.instances.map((item) => ({ ...item })),
+        };
+        const result$2 = Scene.refreshComponents(candidate, variants);
+        if (result$2.TAG === "Err") {
+          return result$2;
+        }
+        if (!$eq(candidate, session.scene)) {
+          session.scene = candidate;
+          session.revision = id;
+        }
+        session.library = variants;
+        edited = undefined;
+        break;
+      }
+      default:
+        return { TAG: "Err", _0: "Unknown command." };
+    }
+    const props = { ...session.scene };
+    const layers = session.scene.layers.map((item) => ({ ...item }));
+    const instances = session.scene.instances.map((item) => ({ ...item }));
+    const value = session.revision;
+    const collect = session.undo.map((entry) => entry.entry);
+    const design = {
+      scene: { ...props, layers, instances },
+      board: {
+        width: BOARD_WIDTH,
+        height: BOARD_HEIGHT,
+      },
+      revision: value,
+      history: {
+        undo: collect,
+        redo: session.redo.toReversed().map((entry) => entry.entry),
+      },
+      edited,
+      inserted,
+    };
+    const result = $toJson(design, designSerialize_serialize, false);
+    return result.TAG === "Err" ? { TAG: "Err", _0: $displayJsonError(result._0) } : result;
+  },
+};
 //# sourceMappingURL=scene.js.map

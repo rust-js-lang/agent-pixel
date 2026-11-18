@@ -35,7 +35,7 @@
 .shape { position: absolute; border: 0; touch-action: none; cursor: move; padding: 0; }
 .shape:focus-visible, .shape:hover { outline: 2px dashed #416cd7; }
 .shape.text-layer { text-align: left; display: block; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.15; }
-.tools { display: flex; background: #242922; border-radius: 7px; padding: 4px; box-shadow: 0 3px 9px #20241f28; }
+.tools { display: flex; flex-wrap: wrap; background: #242922; border-radius: 7px; padding: 4px; box-shadow: 0 3px 9px #20241f28; }
 .tools button { background: transparent; color: white; border: 0; padding: 9px; font-size: 12px; }
 .tools button:hover { background: #414a3e; }
 .layout form { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }

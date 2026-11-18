@@ -1,0 +1,17 @@
+{
+  "initial": { "version": 1, "layers": [] },
+  "invalid": {
+    "revision": "r1",
+    "edits": [
+      { "op": "patch", "layer": { "kind": "ellipse", "x": 10 } },
+      { "op": "delete", "id": "unknown" }
+    ]
+  },
+  "valid": {
+    "revision": "r1",
+    "edits": [
+      { "op": "patch", "layer": { "kind": "ellipse", "x": 10 } },
+      { "op": "patch", "layer": { "kind": "rectangle", "x": 100 } }
+    ]
+  }
+}

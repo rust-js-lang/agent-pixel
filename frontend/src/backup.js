@@ -131,6 +131,11 @@ function export$(id) {
     if (scene != null) {
       screen.scene = scene;
     }
+    const action = screen.info.action;
+    const holds = (action) => !screen.scene.layers.some((layer) => layer.id === action.layerId);
+    if (action != null && holds(action)) {
+      screen.info.action = undefined;
+    }
     if (screen.scene.instances.length !== 0) {
       const result = Scene.refreshComponents(screen.scene, bundle.library);
       if (result.TAG === "Err") {

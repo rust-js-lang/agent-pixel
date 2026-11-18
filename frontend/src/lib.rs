@@ -19,7 +19,9 @@ mod zoom;
 pub use transport::serve_worker;
 
 use js::JsError;
-use pixel_geometry::scene::{ComponentInsert, ComponentSwitch, Design, Document, Patch, Scene};
+use pixel_geometry::scene::{
+    Author, Batch, ComponentInsert, ComponentSwitch, Design, Document, Edit, History, Patch, Scene,
+};
 use pixel_geometry::{bundle::ScreenInfo, scene::ComponentVariant};
 use projects::Project;
 use react::dom::client::{Root, create_root};
@@ -34,6 +36,8 @@ thread_local! {
 #[derive(Default)]
 struct Editor {
     document: Document,
+    revision: String,
+    history: History,
     selected: Option<String>,
     server: bool,
     project: Project,
@@ -192,7 +196,7 @@ fn message(error: &JsError) -> String {
 }
 
 async fn request(command: &str, body: &str) -> Result<Design, String> {
-    let body = transport::request(command, body).await?;
+    let body = transport::request(command, body, Author::Person).await?;
     serde_json::from_str(&body).map_err(|error| error.to_string())
 }
 
@@ -228,6 +232,8 @@ async fn start() -> Result<(), String> {
         }
     };
     EDITOR.with_borrow_mut(|editor| {
+        editor.revision = design.revision;
+        editor.history = design.history;
         editor.replace_scene(design.scene);
         editor.document.revision = saved.revision;
         editor.status = warning.unwrap_or_else(|| {
@@ -277,37 +283,39 @@ async fn read_design() -> Result<String, String> {
     serde_json::to_string(&design).map_err(|error| error.to_string())
 }
 
-async fn edit_design(json: String) -> Result<String, String> {
-    change_design("edit", &json).await
+async fn edit_design(json: String, author: Author) -> Result<String, String> {
+    change_design("edit", &json, author).await
 }
 
-async fn place_component(id: &str, x: i32, y: i32) -> Result<String, String> {
+async fn place_component(id: &str, x: i32, y: i32, author: Author) -> Result<String, String> {
     let placement = ComponentInsert {
         variant: components::component(id)?,
         x,
         y,
     };
     let json = serde_json::to_string(&placement).map_err(|error| error.to_string())?;
-    change_design("insert", &json).await
+    change_design("insert", &json, author).await
 }
 
-async fn change_variant(id: String, variant: &str) -> Result<String, String> {
+async fn change_variant(id: String, variant: &str, author: Author) -> Result<String, String> {
     let switch = ComponentSwitch {
         id,
         variant: components::component(variant)?,
     };
     let json = serde_json::to_string(&switch).map_err(|error| error.to_string())?;
-    change_design("switch", &json).await
+    change_design("switch", &json, author).await
 }
 
 async fn refresh_linked_components() {
     let has_instances = EDITOR.with_borrow(|editor| {
         !editor.busy
-            && editor
-                .document
-                .scene
-                .as_ref()
-                .is_some_and(|scene| !scene.instances.is_empty())
+            && (!editor.history.undo.is_empty()
+                || !editor.history.redo.is_empty()
+                || editor
+                    .document
+                    .scene
+                    .as_ref()
+                    .is_some_and(|scene| !scene.instances.is_empty()))
     });
     if !has_instances {
         return;
@@ -324,6 +332,8 @@ async fn refresh_linked_components() {
                 if editor.document.scene.as_ref() == Some(&design.scene) {
                     return false;
                 }
+                editor.revision = design.revision;
+                editor.history = design.history;
                 editor.document.scene = Some(design.scene);
                 if editor.save_local().is_ok() {
                     editor.status = "Linked components updated from Canopy UI".into();
@@ -340,14 +350,22 @@ async fn refresh_linked_components() {
     }
 }
 
-async fn change_design(command: &str, json: &str) -> Result<String, String> {
+async fn change_design(command: &str, json: &str, author: Author) -> Result<String, String> {
     if EDITOR.with_borrow(|editor| editor.busy) {
         return Err("Wait for the document server operation.".into());
     }
-    let design = request(command, json).await?;
-    let body = serde_json::to_string(&design).map_err(|error| error.to_string())?;
+    let reply = transport::request(command, json, author).await?;
+    let design: Design = serde_json::from_str(&reply).map_err(|error| error.to_string())?;
     EDITOR.with_borrow_mut(|editor| {
-        editor.select(design.edited);
+        let selected = design.edited.or_else(|| {
+            editor
+                .selected
+                .take()
+                .filter(|id| design.scene.layers.iter().any(|layer| &layer.id == id))
+        });
+        editor.select(selected);
+        editor.revision = design.revision;
+        editor.history = design.history;
         editor.document.scene = Some(design.scene);
         editor.status = if editor.save_local().is_err() {
             "Browser storage unavailable · Edits are in memory"
@@ -359,17 +377,55 @@ async fn change_design(command: &str, json: &str) -> Result<String, String> {
         .into();
     });
     render();
-    Ok(body)
+    Ok(reply)
 }
 
 fn edit(patch: Patch) {
     js::spawn(Box::new(async move {
         let json = serde_json::to_string(&patch).expect("Serialize patch");
-        if let Err(error) = edit_design(json).await {
+        if let Err(error) = edit_design(json, Author::Person).await {
             EDITOR.with_borrow_mut(|editor| editor.fields_version += 1);
             status(error);
         }
     }));
+}
+
+fn history_action(undo: bool) {
+    let revision = EDITOR.with_borrow(|editor| editor.revision.clone());
+    let command = if undo { "undo" } else { "redo" };
+    js::spawn(Box::new(async move {
+        if let Err(error) = change_design(
+            command,
+            &serde_json::to_string(&revision).expect("Serialize revision"),
+            Author::Person,
+        )
+        .await
+        {
+            status(error);
+        }
+    }));
+}
+
+fn delete_selection() {
+    let (id, revision) =
+        EDITOR.with_borrow(|editor| (editor.selected.clone(), editor.revision.clone()));
+    if let Some(id) = id {
+        let batch = Batch {
+            revision,
+            edits: vec![Edit::Delete { id }],
+        };
+        js::spawn(Box::new(async move {
+            if let Err(error) = change_design(
+                "batch",
+                &serde_json::to_string(&batch).expect("Serialize deletion"),
+                Author::Person,
+            )
+            .await
+            {
+                status(error);
+            }
+        }));
+    }
 }
 
 fn select(id: String) {
@@ -428,6 +484,8 @@ async fn load_server() -> Result<String, String> {
     let scene = saved.scene.ok_or("No saved server copy yet")?;
     let design = restore(&scene).await?;
     EDITOR.with_borrow_mut(|editor| {
+        editor.revision = design.revision;
+        editor.history = design.history;
         editor.replace_scene(design.scene);
         editor.document.revision = saved.revision;
         browser::save_draft(&editor.project.storage_key(editor.server), None).map_err(message)?;

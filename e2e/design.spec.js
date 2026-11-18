@@ -42,7 +42,7 @@ test("an agent designs a task dashboard from a blank artboard", async ({ page })
   const updated = await place({ id, text: "Today’s tasks" });
   await expect(page.locator("#shapes").getByText("Today’s tasks", { exact: true })).toBeVisible();
   await expect(place({ id, fontSize: 97 })).rejects.toThrow();
-  expect(await read()).toEqual({ board: updated.board, scene: updated.scene });
+  expect(await read()).toEqual({ board: updated.board, scene: updated.scene, revision: updated.revision, history: updated.history });
 
   await page.reload();
   await expect(page.locator("#agent")).toHaveText("WebMCP tools ready");

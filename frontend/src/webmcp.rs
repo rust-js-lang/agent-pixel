@@ -1,4 +1,6 @@
 //! Browser bindings for the experimental WebMCP model context.
+use pixel_geometry::scene::{Author, Batch};
+
 use crate::projects;
 use js::{JsError, JsObject, Promise, Unknown, json, promise};
 use serde::Deserialize;
@@ -82,8 +84,70 @@ struct SwitchVariant {
     variant_id: String,
 }
 
+const REVISION_SCHEMA: &str = r#"{"type":"object","required":["revision"],"additionalProperties":false,"properties":{"revision":{"type":"string"}}}"#;
+const BATCH_SCHEMA: &str = r#"{
+    "type":"object","required":["revision","edits"],"additionalProperties":false,
+    "properties":{
+        "revision":{"type":"string","description":"Current revision from read_design"},
+        "edits":{"type":"array","minItems":1,"maxItems":100,"items":{"oneOf":[
+            {"type":"object","required":["op","layer"],"additionalProperties":false,"properties":{
+                "op":{"const":"patch"},"layer":{"type":"object","description":"Same fields as edit_layer. Omit ID to create a layer."}
+            }},
+            {"type":"object","required":["op","id"],"additionalProperties":false,"properties":{
+                "op":{"const":"delete"},"id":{"type":"string"}
+            }}
+        ]}}
+    }
+}"#;
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Revision {
+    revision: String,
+}
+
+fn history_tool(name: &'static str, description: &'static str, command: &'static str) -> Tool {
+    Tool {
+        name,
+        description,
+        annotations: None,
+        input_schema: parse(REVISION_SCHEMA),
+        execute: Box::new(move |input| {
+            js::promise(async move {
+                let result = match decode(input, "Provide a design revision.") {
+                    Ok(Revision { revision }) => {
+                        crate::change_design(
+                            command,
+                            &serde_json::to_string(&revision).expect("Serialize revision"),
+                            Author::Agent,
+                        )
+                        .await
+                    }
+                    Err(error) => Err(error),
+                };
+                tool_result(result)
+            })
+        }),
+    }
+}
+
 pub async fn register_editor_tools() -> Result<bool, &'static JsError> {
     register(vec![
+        history_tool("undo_edit", "Undo the latest transaction in this editor session.", "undo"),
+        history_tool("redo_edit", "Redo the next transaction in this editor session.", "redo"),
+        Tool {
+            name: "apply_edits",
+            description: "Apply up to 100 layer patches or deletions atomically at the expected design revision. The batch is one undo step.",
+            annotations: None,
+            input_schema: parse(BATCH_SCHEMA),
+            execute: Box::new(|input| js::promise(async move {
+                let result = match decode::<Batch>(input, "Provide valid edits and a design revision.") {
+                    Ok(batch) => crate::change_design("batch", &serde_json::to_string(&batch).expect("Serialize batch"), Author::Agent).await,
+                    Err(error) => Err(error),
+                };
+                tool_result(result)
+            })),
+        },
         Tool {
             name: "list_components",
             description: "List the Canopy UI component families and variant IDs available for insertion.",
@@ -100,7 +164,7 @@ pub async fn register_editor_tools() -> Result<bool, &'static JsError> {
             annotations: None,
             execute: Box::new(|input| js::promise(async move {
                 let result = match decode(input, "Provide a component variant ID and integer x and y coordinates.") {
-                    Ok(InsertComponent { id, x, y }) => crate::place_component(&id, x, y).await,
+                    Ok(InsertComponent { id, x, y }) => crate::place_component(&id, x, y, Author::Agent).await,
                     Err(error) => Err(error),
                 };
                 tool_result(result)
@@ -113,7 +177,7 @@ pub async fn register_editor_tools() -> Result<bool, &'static JsError> {
             annotations: None,
             execute: Box::new(|input| js::promise(async move {
                 let result = match decode(input, "Provide an instance ID and a variant ID.") {
-                    Ok(SwitchVariant { instance_id, variant_id }) => crate::change_variant(instance_id, &variant_id).await,
+                    Ok(SwitchVariant { instance_id, variant_id }) => crate::change_variant(instance_id, &variant_id, Author::Agent).await,
                     Err(error) => Err(error),
                 };
                 tool_result(result)
@@ -139,7 +203,7 @@ pub async fn register_editor_tools() -> Result<bool, &'static JsError> {
                 js::promise(async move {
                     let body = input.and_then(|value| json::stringify(value).ok().flatten());
                     let result = match body {
-                        Some(body) => crate::edit_design(body).await,
+                        Some(body) => crate::edit_design(body, Author::Agent).await,
                         None => Err("Specify valid shape properties.".into()),
                     };
                     response(result).await

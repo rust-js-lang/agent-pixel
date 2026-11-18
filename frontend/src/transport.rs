@@ -5,7 +5,7 @@ use std::{
 };
 
 use js::{Kind, Promise, promise};
-use pixel_geometry::scene::{Scene, worker_command};
+use pixel_geometry::scene::{Author, Scene, Session};
 use serde::{Deserialize, Serialize};
 use webapi::{Event, EventTargetExt, MessageEvent, Worker, WorkerOptions, events, global, worker};
 
@@ -17,6 +17,7 @@ type Resolve = &'static dyn Fn(Reply);
 struct Request {
     sequence: u32,
     command: String,
+    author: Author,
     json: String,
 }
 
@@ -31,10 +32,10 @@ thread_local! {
     static FAILED: Cell<bool> = const { Cell::new(false) };
     static SEQUENCE: Cell<u32> = const { Cell::new(0) };
     static PENDING: RefCell<HashMap<u32, Resolve>> = RefCell::new(HashMap::new());
-    static SCENE: RefCell<Scene> = RefCell::new(Scene::poster());
+    static SESSION: RefCell<Session> = RefCell::new(Session::new(Scene::poster()));
 }
 
-pub fn request(command: &str, json: &str) -> Promise<Reply> {
+pub fn request(command: &str, json: &str, author: Author) -> Promise<Reply> {
     if FAILED.get() {
         return promise::resolve(Err(FAILURE.into()));
     }
@@ -44,6 +45,7 @@ pub fn request(command: &str, json: &str) -> Promise<Reply> {
     let message = serde_json::to_string(&Request {
         sequence,
         command: command.into(),
+        author,
         json: json.into(),
     })
     .expect("Serialize worker request");
@@ -108,12 +110,12 @@ pub fn serve_worker() {
 fn receive_request(event: &MessageEvent) {
     if let Kind::String(json) = js::classify(event.data()) {
         if let Ok(request) = serde_json::from_str::<Request>(json) {
-            let result = SCENE.with_borrow_mut(|scene| {
-                worker_command(
-                    scene,
+            let result = SESSION.with_borrow_mut(|session| {
+                session.command(
                     &request.command,
                     &request.json,
                     global::crypto().random_uuid(),
+                    request.author,
                 )
             });
             let response = Response {

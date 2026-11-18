@@ -324,6 +324,26 @@ impl Scene {
         Ok(())
     }
 
+    fn delete_layer(&mut self, id: &str) -> Result<(), &'static str> {
+        if let Some(index) = self
+            .instances
+            .iter()
+            .position(|instance| instance.layer_ids.iter().any(|layer| layer == id))
+        {
+            let instance = self.instances.remove(index);
+            self.layers
+                .retain(|layer| !instance.layer_ids.contains(&layer.id));
+        } else {
+            let index = self
+                .layers
+                .iter()
+                .position(|layer| layer.id == id)
+                .ok_or("Unknown layer.")?;
+            self.layers.remove(index);
+        }
+        Ok(())
+    }
+
     pub fn edit(&mut self, patch: Patch, new_id: String) -> Result<String, &'static str> {
         let Patch {
             id,
@@ -411,10 +431,59 @@ impl Scene {
     }
 }
 
+#[derive(Clone, Copy, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Author {
+    #[default]
+    Person,
+    Agent,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct HistoryEntry {
+    pub label: String,
+    pub author: Author,
+}
+
+#[derive(Default, Serialize, Deserialize)]
+pub struct History {
+    pub undo: Vec<HistoryEntry>,
+    pub redo: Vec<HistoryEntry>,
+}
+
+struct Transaction {
+    scene: Scene,
+    entry: HistoryEntry,
+}
+
+pub struct Session {
+    scene: Scene,
+    revision: String,
+    undo: Vec<Transaction>,
+    redo: Vec<Transaction>,
+    library: Vec<ComponentVariant>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Batch {
+    pub revision: String,
+    pub edits: Vec<Edit>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Edit {
+    Patch { layer: Patch },
+    Delete { id: String },
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct Design {
     pub board: Dimensions,
     pub scene: Scene,
+    pub revision: String,
+    pub history: History,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub edited: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -427,56 +496,180 @@ pub struct Dimensions {
     pub height: i32,
 }
 
-pub fn worker_command(
-    scene: &mut Scene,
-    command: &str,
-    input: &str,
-    id: String,
-) -> Result<String, String> {
-    let mut inserted = None;
-    let edited = match command {
-        "read" => None,
-        "restore" => {
-            let restored: Scene =
-                serde_json::from_str(input).map_err(|_| "Unsupported document.")?;
-            restored.validate()?;
-            *scene = restored;
-            None
+const HISTORY_LIMIT: usize = 32;
+const BATCH_LIMIT: usize = 100;
+
+impl Session {
+    pub fn new(scene: Scene) -> Self {
+        Self {
+            scene,
+            revision: String::new(),
+            undo: Vec::new(),
+            redo: Vec::new(),
+            library: Vec::new(),
         }
-        "edit" => {
-            let patch: Patch =
-                serde_json::from_str(input).map_err(|_| "Specify valid shape properties.")?;
-            Some(scene.edit(patch, id)?)
+    }
+
+    fn commit(&mut self, candidate: Scene, revision: &str, label: &str, author: Author) {
+        if candidate == self.scene {
+            return;
         }
-        "insert" => {
-            let component =
-                serde_json::from_str(input).map_err(|_| "Specify a valid component.")?;
-            let ids = scene.insert_component(component, id)?;
-            let selected = ids.first().cloned();
-            inserted = Some(ids);
-            selected
+        let previous = std::mem::replace(&mut self.scene, candidate);
+        self.undo.push(Transaction {
+            scene: previous,
+            entry: HistoryEntry {
+                label: label.into(),
+                author,
+            },
+        });
+        if self.undo.len() > HISTORY_LIMIT {
+            self.undo.remove(0);
         }
-        "switch" => {
-            let switch =
-                serde_json::from_str(input).map_err(|_| "Specify a valid component variant.")?;
-            Some(scene.switch_component(switch)?)
+        self.redo.clear();
+        self.revision = revision.into();
+    }
+
+    fn travel(&mut self, undo: bool, revision: &str) -> Result<(), &'static str> {
+        let (from, to) = if undo {
+            (&mut self.undo, &mut self.redo)
+        } else {
+            (&mut self.redo, &mut self.undo)
+        };
+        let transaction = from.last().ok_or("No edit in that direction.")?;
+        let mut candidate = transaction.scene.clone();
+        if !candidate.instances.is_empty() {
+            candidate.refresh_components(&self.library)?;
         }
-        "refresh_components" => {
-            let variants: Vec<ComponentVariant> =
-                serde_json::from_str(input).map_err(|_| "Invalid component library.")?;
-            scene.refresh_components(&variants)?;
-            None
+        let previous = std::mem::replace(&mut self.scene, candidate);
+        let transaction = from.pop().expect("History entry");
+        to.push(Transaction {
+            scene: previous,
+            entry: transaction.entry,
+        });
+        self.revision = revision.into();
+        Ok(())
+    }
+
+    fn apply_batch(
+        &mut self,
+        batch: Batch,
+        id: &str,
+        author: Author,
+    ) -> Result<Option<String>, &'static str> {
+        if batch.revision != self.revision {
+            return Err("Design changed. Read its latest revision before applying edits.");
         }
-        _ => return Err("Unknown command.".into()),
-    };
-    let design = Design {
-        scene: scene.clone(),
-        board: Dimensions {
-            width: BOARD_WIDTH,
-            height: BOARD_HEIGHT,
-        },
-        edited,
-        inserted,
-    };
-    serde_json::to_string(&design).map_err(|error| error.to_string())
+        if batch.edits.is_empty() || batch.edits.len() > BATCH_LIMIT {
+            return Err("Submit between 1 and 100 edits.");
+        }
+        let mut candidate = self.scene.clone();
+        let mut selected = None;
+        for (index, edit) in batch.edits.into_iter().enumerate() {
+            selected = match edit {
+                Edit::Patch { layer } => Some(candidate.edit(layer, format!("{id}-{index}"))?),
+                Edit::Delete { id } => {
+                    candidate.delete_layer(&id)?;
+                    None
+                }
+            };
+        }
+        self.commit(candidate, id, "Edit layers", author);
+        Ok(selected)
+    }
+
+    pub fn command(
+        &mut self,
+        command: &str,
+        input: &str,
+        id: String,
+        author: Author,
+    ) -> Result<String, String> {
+        let mut inserted = None;
+        let edited = match command {
+            "read" => None,
+            "restore" => {
+                let restored: Scene =
+                    serde_json::from_str(input).map_err(|_| "Unsupported document.")?;
+                restored.validate()?;
+                *self = Self::new(restored);
+                self.revision = id;
+                None
+            }
+            "undo" | "redo" => {
+                let revision: String = serde_json::from_str(input)
+                    .map_err(|_| "Provide the current design revision.")?;
+                if revision != self.revision {
+                    return Err(
+                        "Design changed. Read its latest revision before using history.".into(),
+                    );
+                }
+                self.travel(command == "undo", &id)?;
+                None
+            }
+            "batch" => {
+                let batch = serde_json::from_str(input)
+                    .map_err(|_| "Specify valid edits and a revision.")?;
+                self.apply_batch(batch, &id, author)?
+            }
+            "edit" => {
+                let patch: Patch =
+                    serde_json::from_str(input).map_err(|_| "Specify valid shape properties.")?;
+                let mut candidate = self.scene.clone();
+                let selected = candidate.edit(patch, id.clone())?;
+                self.commit(candidate, &id, "Edit layer", author);
+                Some(selected)
+            }
+            "insert" => {
+                let component =
+                    serde_json::from_str(input).map_err(|_| "Specify a valid component.")?;
+                let mut candidate = self.scene.clone();
+                let ids = candidate.insert_component(component, id.clone())?;
+                let selected = ids.first().cloned();
+                self.commit(candidate, &id, "Insert component", author);
+                inserted = Some(ids);
+                selected
+            }
+            "switch" => {
+                let switch = serde_json::from_str(input)
+                    .map_err(|_| "Specify a valid component variant.")?;
+                let mut candidate = self.scene.clone();
+                let selected = candidate.switch_component(switch)?;
+                self.commit(candidate, &id, "Switch component variant", author);
+                Some(selected)
+            }
+            "refresh_components" => {
+                let variants: Vec<ComponentVariant> =
+                    serde_json::from_str(input).map_err(|_| "Invalid component library.")?;
+                let mut candidate = self.scene.clone();
+                candidate.refresh_components(&variants)?;
+                if candidate != self.scene {
+                    self.scene = candidate;
+                    self.revision = id;
+                }
+                self.library = variants;
+                None
+            }
+            _ => return Err("Unknown command.".into()),
+        };
+        let design = Design {
+            scene: self.scene.clone(),
+            board: Dimensions {
+                width: BOARD_WIDTH,
+                height: BOARD_HEIGHT,
+            },
+            revision: self.revision.clone(),
+            history: History {
+                undo: self.undo.iter().map(|entry| entry.entry.clone()).collect(),
+                redo: self
+                    .redo
+                    .iter()
+                    .rev()
+                    .map(|entry| entry.entry.clone())
+                    .collect(),
+            },
+            edited,
+            inserted,
+        };
+        serde_json::to_string(&design).map_err(|error| error.to_string())
+    }
 }

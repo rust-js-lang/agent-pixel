@@ -7,7 +7,7 @@ use crate::{
 
 use pixel_geometry::{
     BOARD_HEIGHT, BOARD_WIDTH,
-    scene::{ComponentInstance, Layer, Patch},
+    scene::{Author, ComponentInstance, Layer, Patch},
 };
 use react::{CSSProperties, JSX, event::PointerEvent, jsx};
 use std::cell::RefCell;
@@ -262,7 +262,7 @@ fn instance_inspector(instance: &ComponentInstance) -> JSX::Element {
                 let id = id.clone();
                 let variant = event.current_target().value();
                 js::spawn(Box::new(async move {
-                    if let Err(error) = crate::change_variant(id, &variant).await {
+                    if let Err(error) = crate::change_variant(id, &variant, Author::Person).await {
                         crate::status(error);
                     }
                 }));
@@ -285,7 +285,7 @@ fn component_picker(disabled: bool) -> JSX::Element {
                     if let (Ok(x), Ok(y)) = (x.parse::<i32>(), y.parse::<i32>()) {
                         let id = id.to_string();
                         js::spawn(Box::new(async move {
-                            if let Err(error) = crate::place_component(&id, x, y).await {
+                            if let Err(error) = crate::place_component(&id, x, y, Author::Person).await {
                                 crate::status(error);
                             }
                         }));
@@ -445,6 +445,9 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
                     </div>
                     <div className={CANVAS.canvas_toolbar()}>
                     <div className={EDITOR_STYLES.tools()}>
+                        <button type="button" disabled={disabled || editor.history.undo.is_empty()} onClick={|_| crate::history_action(true)}>"Undo"</button>
+                        <button type="button" disabled={disabled || editor.history.redo.is_empty()} onClick={|_| crate::history_action(false)}>"Redo"</button>
+                        <button type="button" disabled={disabled || selected.is_none()} onClick={|_| crate::delete_selection()}>"Delete layer"</button>
                         <button id="rect" disabled={disabled} onClick={|_| add("rectangle")}>"▢  Rectangle +"</button>
                         <button id="ellipse" disabled={disabled} onClick={|_| add("ellipse")}>"○  Ellipse +"</button>
                         <button disabled={disabled} onClick={|_| edit(Patch { kind: Some("text".into()), text: Some("Label".into()), font_size: Some(20), width: Some(170), height: Some(32), fill: Some("#20231f".into()), ..Patch::default() })}>"T  Text +"</button>
@@ -459,7 +462,11 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
                 <aside className={EDITOR_STYLES.properties()}>
                     <div className={EDITOR_STYLES.eyebrow()}>"INSPECTOR"</div>
                     {component_picker(disabled)}
-                    {properties}<span id="agent" className={EDITOR_STYLES.agent()}>{editor.agent.clone()}</span>
+                    {properties}
+                    {editor.history.undo.last().map(|entry| jsx! {
+                        <p aria-label="Last edit">{format!("{} · {}", entry.label, if matches!(entry.author, Author::Agent) { "Agent" } else { "You" })}</p>
+                    })}
+                    <span id="agent" className={EDITOR_STYLES.agent()}>{editor.agent.clone()}</span>
                     {editor.server.then(|| jsx! {
                         <div id="server" className={EDITOR_STYLES.server()}>
                             <button disabled={disabled} onClick={|_| sync_to_server(false)}>"Save to server"</button>

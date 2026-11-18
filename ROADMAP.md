@@ -8,7 +8,7 @@ The release blockers are recoverable project storage, dependable editing of real
 
 ### M1 checkpoint
 
-The dashboard and WebMCP can export and restore a versioned project bundle with the current artboards, prototype links, and a pinned component library. Browser drafts still use their existing storage. IndexedDB revisions, interruption and quota recovery, asset support, and undo are still open.
+The dashboard and WebMCP can export and restore a versioned project bundle with the current artboards, prototype links, and a pinned component library. The editor supports attributed undo and redo within an open session. Agents can submit an atomic batch at a known revision and undo or redo the entire batch. Browser drafts still use their existing storage. Durable revisions and checkpoints in IndexedDB, interruption and quota recovery, cross-tab conflicts, and asset support are still open.
 
 ## Target workflow
 

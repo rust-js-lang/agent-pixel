@@ -48,6 +48,15 @@ pub fn export(id: &str) -> Result<String, String> {
         if let Some(scene) = projects::load_document(&key)?.and_then(|document| document.scene) {
             screen.scene = scene;
         }
+        if screen.info.action.as_ref().is_some_and(|action| {
+            !screen
+                .scene
+                .layers
+                .iter()
+                .any(|layer| layer.id == action.layer_id)
+        }) {
+            screen.info.action = None;
+        }
         if !screen.scene.instances.is_empty() {
             screen.scene.refresh_components(&bundle.library)?;
         }

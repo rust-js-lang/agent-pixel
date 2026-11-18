@@ -93,3 +93,9 @@ The dashboard, editor, canvas, shared artboard, journey prototype, and page shel
 ## Back up and restore a project
 
 Open **Project backup** on the dashboard to download a versioned JSON bundle or restore one as a new project. On the dashboard, agents can call `export_project` with `{ id }` and `import_project` with `{ bundle }`. Each bundle contains the saved browser artboards, prototype links, and a snapshot of the component library. Restored instances resolve against that snapshot so they keep their appearance in a fresh browser.
+
+## Edit in transactions
+
+Use **Undo**, **Redo**, and **Delete layer** in the editor. Deleting a linked component layer removes the whole instance. The inspector labels the last committed change as yours or the agent's.
+
+For multi-layer agent edits, call `read_design` for its current revision and then `apply_edits` with `{ revision, edits }`. Each edit is `{ op: "patch", layer }` using the fields accepted by `edit_layer`, or `{ op: "delete", id }`. A successful batch counts as one undo step. Use `undo_edit` and `redo_edit` with the latest revision. The worker keeps the last 32 transactions in the current editor session.
