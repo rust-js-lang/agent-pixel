@@ -1,0 +1,513 @@
+{
+  "version": 1,
+  "layers": [
+    {
+      "id": "d610b7d5-02a4-4448-954e-7877186063c8",
+      "kind": "rectangle",
+      "x": 0,
+      "y": 0,
+      "width": 480,
+      "height": 600,
+      "fill": "#f2f4ed"
+    },
+    {
+      "id": "208371d0-433b-4c7a-aa90-42abbfe47789",
+      "kind": "ellipse",
+      "x": 24,
+      "y": 22,
+      "width": 29,
+      "height": 29,
+      "fill": "#133d35"
+    },
+    {
+      "id": "a1ec8265-085d-4a59-b405-c8dafbca70fa",
+      "kind": "text",
+      "x": 32,
+      "y": 24,
+      "width": 15,
+      "height": 23,
+      "fill": "#c8f382",
+      "text": "↗",
+      "fontSize": 16
+    },
+    {
+      "id": "d96e19a5-ff45-442b-88c3-f58028476943",
+      "kind": "text",
+      "x": 63,
+      "y": 23,
+      "width": 210,
+      "height": 26,
+      "fill": "#162d29",
+      "text": "C U R R E N T",
+      "fontSize": 13
+    },
+    {
+      "id": "20faec99-a3a9-4c3e-8df3-689016e2540c",
+      "kind": "ellipse",
+      "x": 425,
+      "y": 21,
+      "width": 31,
+      "height": 31,
+      "fill": "#dae6d6"
+    },
+    {
+      "id": "f726eeaa-4d12-4dc7-b5f6-113b935ef752",
+      "kind": "text",
+      "x": 432,
+      "y": 25,
+      "width": 23,
+      "height": 23,
+      "fill": "#133d35",
+      "text": "JD",
+      "fontSize": 11
+    },
+    {
+      "id": "7d7c6186-a4eb-469d-b975-ca605db2f30a",
+      "kind": "text",
+      "x": 24,
+      "y": 58,
+      "width": 432,
+      "height": 38,
+      "fill": "#162d29",
+      "text": "Home energy",
+      "fontSize": 29
+    },
+    {
+      "id": "63ee0013-b969-4c23-8cfc-65943f6fe5d0",
+      "kind": "text",
+      "x": 25,
+      "y": 96,
+      "width": 300,
+      "height": 20,
+      "fill": "#53645c",
+      "text": "Monday, 16 November",
+      "fontSize": 13
+    },
+    {
+      "id": "796b40a8-6434-46d9-a8e6-2553d9b18ada",
+      "kind": "rectangle",
+      "x": 24,
+      "y": 132,
+      "width": 432,
+      "height": 123,
+      "fill": "#133d35"
+    },
+    {
+      "id": "cbaea3ae-26fc-4039-83bb-1f2ce49c7bca",
+      "kind": "text",
+      "x": 43,
+      "y": 145,
+      "width": 200,
+      "height": 20,
+      "fill": "#b9d4c0",
+      "text": "TODAY'S USE",
+      "fontSize": 12
+    },
+    {
+      "id": "71c3cafa-0cc8-4264-846d-e4568cfb1247",
+      "kind": "text",
+      "x": 41,
+      "y": 169,
+      "width": 261,
+      "height": 48,
+      "fill": "#ffffff",
+      "text": "8.4 kWh",
+      "fontSize": 37
+    },
+    {
+      "id": "713cc319-feda-4f7f-b000-322faae70c80",
+      "kind": "text",
+      "x": 43,
+      "y": 220,
+      "width": 260,
+      "height": 20,
+      "fill": "#b9d4c0",
+      "text": "vs. 10.0 kWh last Monday",
+      "fontSize": 13
+    },
+    {
+      "id": "ef0ba9ce-6299-4cc5-91ea-4885d314b742",
+      "kind": "rectangle",
+      "x": 336,
+      "y": 173,
+      "width": 97,
+      "height": 31,
+      "fill": "#c8f382"
+    },
+    {
+      "id": "81efc6ef-9752-413f-bf1b-274d8250a0de",
+      "kind": "text",
+      "x": 357,
+      "y": 178,
+      "width": 67,
+      "height": 21,
+      "fill": "#133d35",
+      "text": "↓ 16%",
+      "fontSize": 15
+    },
+    {
+      "id": "24d825ab-5d9a-4c03-ad01-b3e341313905",
+      "kind": "text",
+      "x": 326,
+      "y": 211,
+      "width": 112,
+      "height": 19,
+      "fill": "#b9d4c0",
+      "text": "WEEK OVER WEEK",
+      "fontSize": 10
+    },
+    {
+      "id": "3bcc274a-271e-4209-bc2e-d4aa486f66b0",
+      "kind": "rectangle",
+      "x": 24,
+      "y": 271,
+      "width": 432,
+      "height": 225,
+      "fill": "#ffffff"
+    },
+    {
+      "id": "ec8f0706-48cf-48fc-bfaa-9da6382c8120",
+      "kind": "text",
+      "x": 43,
+      "y": 284,
+      "width": 292,
+      "height": 31,
+      "fill": "#162d29",
+      "text": "Usage this week",
+      "fontSize": 22
+    },
+    {
+      "id": "c964b9a0-5b56-44d0-b7e8-b54c0126a362",
+      "kind": "rectangle",
+      "x": 355,
+      "y": 288,
+      "width": 82,
+      "height": 25,
+      "fill": "#f2f4ed"
+    },
+    {
+      "id": "619c0778-a0e9-4cb3-bb1a-3bd37d1133cd",
+      "kind": "text",
+      "x": 374,
+      "y": 291,
+      "width": 59,
+      "height": 19,
+      "fill": "#53645c",
+      "text": "7 DAYS",
+      "fontSize": 10
+    },
+    {
+      "id": "eb3bea97-4790-431a-b010-de48bf80ed37",
+      "kind": "text",
+      "x": 43,
+      "y": 318,
+      "width": 70,
+      "height": 16,
+      "fill": "#53645c",
+      "text": "kWh",
+      "fontSize": 10
+    },
+    {
+      "id": "42bc71bd-f4a4-4fab-9fd8-0630900acb6a",
+      "kind": "text",
+      "x": 44,
+      "y": 333,
+      "width": 26,
+      "height": 17,
+      "fill": "#53645c",
+      "text": "12",
+      "fontSize": 11
+    },
+    {
+      "id": "99b7f54e-e777-46b4-803e-0ca95fac3968",
+      "kind": "rectangle",
+      "x": 72,
+      "y": 340,
+      "width": 360,
+      "height": 1,
+      "fill": "#e0e7db"
+    },
+    {
+      "id": "b4a4716e-7b6e-48e0-a817-c7243e2ef364",
+      "kind": "text",
+      "x": 44,
+      "y": 365,
+      "width": 26,
+      "height": 17,
+      "fill": "#53645c",
+      "text": "8",
+      "fontSize": 11
+    },
+    {
+      "id": "e5fa9959-e601-4705-ae78-b14c183afae1",
+      "kind": "rectangle",
+      "x": 72,
+      "y": 372,
+      "width": 360,
+      "height": 1,
+      "fill": "#e0e7db"
+    },
+    {
+      "id": "657c56d6-d38e-4488-b6a8-17eb2e121ceb",
+      "kind": "text",
+      "x": 44,
+      "y": 397,
+      "width": 26,
+      "height": 17,
+      "fill": "#53645c",
+      "text": "4",
+      "fontSize": 11
+    },
+    {
+      "id": "d13b7b90-147a-411c-9469-5012d72cecbb",
+      "kind": "rectangle",
+      "x": 72,
+      "y": 404,
+      "width": 360,
+      "height": 1,
+      "fill": "#e0e7db"
+    },
+    {
+      "id": "880cb106-355a-415d-ad93-3e82390123ff",
+      "kind": "text",
+      "x": 44,
+      "y": 429,
+      "width": 26,
+      "height": 17,
+      "fill": "#53645c",
+      "text": "0",
+      "fontSize": 11
+    },
+    {
+      "id": "ca4e6126-6edc-48e4-95a7-50c07ca43b4d",
+      "kind": "rectangle",
+      "x": 72,
+      "y": 436,
+      "width": 360,
+      "height": 1,
+      "fill": "#e0e7db"
+    },
+    {
+      "id": "9854a56c-9082-48f8-8c20-76d97323708d",
+      "kind": "rectangle",
+      "x": 83,
+      "y": 373,
+      "width": 29,
+      "height": 63,
+      "fill": "#b6cdb9"
+    },
+    {
+      "id": "ea93dda3-4088-4e65-be88-a2fe906d3afd",
+      "kind": "text",
+      "x": 93,
+      "y": 445,
+      "width": 15,
+      "height": 19,
+      "fill": "#53645c",
+      "text": "T",
+      "fontSize": 11
+    },
+    {
+      "id": "9b0cd1e9-9914-4352-ab24-0e93ecf12b40",
+      "kind": "rectangle",
+      "x": 134,
+      "y": 356,
+      "width": 29,
+      "height": 80,
+      "fill": "#b6cdb9"
+    },
+    {
+      "id": "f02aae1d-d190-4c61-95f0-823896101270",
+      "kind": "text",
+      "x": 144,
+      "y": 445,
+      "width": 15,
+      "height": 19,
+      "fill": "#53645c",
+      "text": "W",
+      "fontSize": 11
+    },
+    {
+      "id": "836856b1-5a65-4767-be8a-fa947ea38a60",
+      "kind": "rectangle",
+      "x": 185,
+      "y": 365,
+      "width": 29,
+      "height": 71,
+      "fill": "#b6cdb9"
+    },
+    {
+      "id": "c530f562-03c9-43ae-8be4-74f9130ceb22",
+      "kind": "text",
+      "x": 195,
+      "y": 445,
+      "width": 15,
+      "height": 19,
+      "fill": "#53645c",
+      "text": "T",
+      "fontSize": 11
+    },
+    {
+      "id": "9431aa35-add3-4a40-b91b-52c1d6dc31aa",
+      "kind": "rectangle",
+      "x": 236,
+      "y": 346,
+      "width": 29,
+      "height": 90,
+      "fill": "#b6cdb9"
+    },
+    {
+      "id": "6473e35b-8577-4cb9-8ae3-210e43f521bd",
+      "kind": "text",
+      "x": 246,
+      "y": 445,
+      "width": 15,
+      "height": 19,
+      "fill": "#53645c",
+      "text": "F",
+      "fontSize": 11
+    },
+    {
+      "id": "2c131437-31f7-419b-bb82-0c2e1fa1df0e",
+      "kind": "rectangle",
+      "x": 287,
+      "y": 360,
+      "width": 29,
+      "height": 76,
+      "fill": "#b6cdb9"
+    },
+    {
+      "id": "70520830-40f9-4dee-b24d-4225380050e1",
+      "kind": "text",
+      "x": 297,
+      "y": 445,
+      "width": 15,
+      "height": 19,
+      "fill": "#53645c",
+      "text": "S",
+      "fontSize": 11
+    },
+    {
+      "id": "ad53584c-8b48-4bd8-8595-acb2c6f54717",
+      "kind": "rectangle",
+      "x": 338,
+      "y": 340,
+      "width": 29,
+      "height": 96,
+      "fill": "#b6cdb9"
+    },
+    {
+      "id": "fa262b5d-f85b-443f-9795-63495ab66f84",
+      "kind": "text",
+      "x": 348,
+      "y": 445,
+      "width": 15,
+      "height": 19,
+      "fill": "#53645c",
+      "text": "S",
+      "fontSize": 11
+    },
+    {
+      "id": "6d4fd84a-1497-4835-af2e-5e3b91500767",
+      "kind": "rectangle",
+      "x": 389,
+      "y": 369,
+      "width": 29,
+      "height": 67,
+      "fill": "#9bcf5a"
+    },
+    {
+      "id": "fbaf725a-a9e9-417f-8a6f-cb1db0d57cad",
+      "kind": "text",
+      "x": 399,
+      "y": 445,
+      "width": 15,
+      "height": 19,
+      "fill": "#53645c",
+      "text": "M",
+      "fontSize": 11
+    },
+    {
+      "id": "d1d165a5-6691-4aa9-9c32-c58ff8a001bb",
+      "kind": "ellipse",
+      "x": 43,
+      "y": 472,
+      "width": 8,
+      "height": 8,
+      "fill": "#9bcf5a"
+    },
+    {
+      "id": "1f9f9d99-52df-4122-9a07-7d4fdb9232bb",
+      "kind": "text",
+      "x": 56,
+      "y": 467,
+      "width": 78,
+      "height": 18,
+      "fill": "#53645c",
+      "text": "Today",
+      "fontSize": 11
+    },
+    {
+      "id": "c86df809-5349-4db6-ae80-2d790ae4e3b6",
+      "kind": "text",
+      "x": 357,
+      "y": 467,
+      "width": 80,
+      "height": 18,
+      "fill": "#53645c",
+      "text": "Nov 10–16",
+      "fontSize": 11
+    },
+    {
+      "id": "dd9a50d1-6f7b-4707-aa9f-b2de2155ba08",
+      "kind": "rectangle",
+      "x": 24,
+      "y": 512,
+      "width": 432,
+      "height": 63,
+      "fill": "#e4ebda"
+    },
+    {
+      "id": "360b0b73-7c9a-4e72-9437-31ae274f3865",
+      "kind": "ellipse",
+      "x": 42,
+      "y": 526,
+      "width": 34,
+      "height": 34,
+      "fill": "#ccdfb9"
+    },
+    {
+      "id": "1ed98640-8595-414a-bbe8-d67aca971039",
+      "kind": "text",
+      "x": 51,
+      "y": 529,
+      "width": 19,
+      "height": 25,
+      "fill": "#133d35",
+      "text": "↘",
+      "fontSize": 15
+    },
+    {
+      "id": "8f9c01bb-41fd-464c-9c54-21029a90fdc1",
+      "kind": "text",
+      "x": 89,
+      "y": 521,
+      "width": 330,
+      "height": 24,
+      "fill": "#162d29",
+      "text": "Off-peak starts at 9 PM",
+      "fontSize": 16
+    },
+    {
+      "id": "8b8eb98a-aa79-49bb-a5c5-24bfa105095f",
+      "kind": "text",
+      "x": 89,
+      "y": 547,
+      "width": 338,
+      "height": 16,
+      "fill": "#53645c",
+      "text": "Shift your next laundry cycle to save.",
+      "fontSize": 12
+    }
+  ]
+}

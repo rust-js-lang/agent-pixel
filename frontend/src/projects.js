@@ -4,11 +4,22 @@ import * as Browser from "./browser.js";
 import {
   Scene,
   documentDeserialize_deserialize,
+  sceneDeserialize_deserialize,
 } from "../../core/src/scene.js";
 import { message } from "./lib.js";
-import { $displayJsonError, $extend, $fromJson, $json, $toJson, $trim } from "@rust-js/std";
+import {
+  $debugJsonError,
+  $displayJsonError,
+  $extend,
+  $fromJson,
+  $json,
+  $toJson,
+  $trim,
+  $unwrapOk,
+} from "@rust-js/std";
 
 const ORBIT = "orbit";
+const CURRENT = "current";
 const WEB_APP = "web-app";
 const CATALOG = "agent-pixel:projects:v1";
 
@@ -55,7 +66,21 @@ export const Project = {
   },
 
   initialScene(project) {
-    return Project.isPoster(project) ? Scene.poster() : Scene.blank();
+    switch (project.id) {
+      case ORBIT:
+        return Scene.poster();
+      case CURRENT:
+        return $unwrapOk(
+          $fromJson(
+            '{\n  "version": 1,\n  "layers": [\n    {\n      "id": "d610b7d5-02a4-4448-954e-7877186063c8",\n      "kind": "rectangle",\n      "x": 0,\n      "y": 0,\n      "width": 480,\n      "height": 600,\n      "fill": "#f2f4ed"\n    },\n    {\n      "id": "208371d0-433b-4c7a-aa90-42abbfe47789",\n      "kind": "ellipse",\n      "x": 24,\n      "y": 22,\n      "width": 29,\n      "height": 29,\n      "fill": "#133d35"\n    },\n    {\n      "id": "a1ec8265-085d-4a59-b405-c8dafbca70fa",\n      "kind": "text",\n      "x": 32,\n      "y": 24,\n      "width": 15,\n      "height": 23,\n      "fill": "#c8f382",\n      "text": "↗",\n      "fontSize": 16\n    },\n    {\n      "id": "d96e19a5-ff45-442b-88c3-f58028476943",\n      "kind": "text",\n      "x": 63,\n      "y": 23,\n      "width": 210,\n      "height": 26,\n      "fill": "#162d29",\n      "text": "C U R R E N T",\n      "fontSize": 13\n    },\n    {\n      "id": "20faec99-a3a9-4c3e-8df3-689016e2540c",\n      "kind": "ellipse",\n      "x": 425,\n      "y": 21,\n      "width": 31,\n      "height": 31,\n      "fill": "#dae6d6"\n    },\n    {\n      "id": "f726eeaa-4d12-4dc7-b5f6-113b935ef752",\n      "kind": "text",\n      "x": 432,\n      "y": 25,\n      "width": 23,\n      "height": 23,\n      "fill": "#133d35",\n      "text": "JD",\n      "fontSize": 11\n    },\n    {\n      "id": "7d7c6186-a4eb-469d-b975-ca605db2f30a",\n      "kind": "text",\n      "x": 24,\n      "y": 58,\n      "width": 432,\n      "height": 38,\n      "fill": "#162d29",\n      "text": "Home energy",\n      "fontSize": 29\n    },\n    {\n      "id": "63ee0013-b969-4c23-8cfc-65943f6fe5d0",\n      "kind": "text",\n      "x": 25,\n      "y": 96,\n      "width": 300,\n      "height": 20,\n      "fill": "#53645c",\n      "text": "Monday, 16 November",\n      "fontSize": 13\n    },\n    {\n      "id": "796b40a8-6434-46d9-a8e6-2553d9b18ada",\n      "kind": "rectangle",\n      "x": 24,\n      "y": 132,\n      "width": 432,\n      "height": 123,\n      "fill": "#133d35"\n    },\n    {\n      "id": "cbaea3ae-26fc-4039-83bb-1f2ce49c7bca",\n      "kind": "text",\n      "x": 43,\n      "y": 145,\n      "width": 200,\n      "height": 20,\n      "fill": "#b9d4c0",\n      "text": "TODAY\'S USE",\n      "fontSize": 12\n    },\n    {\n      "id": "71c3cafa-0cc8-4264-846d-e4568cfb1247",\n      "kind": "text",\n      "x": 41,\n      "y": 169,\n      "width": 261,\n      "height": 48,\n      "fill": "#ffffff",\n      "text": "8.4 kWh",\n      "fontSize": 37\n    },\n    {\n      "id": "713cc319-feda-4f7f-b000-322faae70c80",\n      "kind": "text",\n      "x": 43,\n      "y": 220,\n      "width": 260,\n      "height": 20,\n      "fill": "#b9d4c0",\n      "text": "vs. 10.0 kWh last Monday",\n      "fontSize": 13\n    },\n    {\n      "id": "ef0ba9ce-6299-4cc5-91ea-4885d314b742",\n      "kind": "rectangle",\n      "x": 336,\n      "y": 173,\n      "width": 97,\n      "height": 31,\n      "fill": "#c8f382"\n    },\n    {\n      "id": "81efc6ef-9752-413f-bf1b-274d8250a0de",\n      "kind": "text",\n      "x": 357,\n      "y": 178,\n      "width": 67,\n      "height": 21,\n      "fill": "#133d35",\n      "text": "↓ 16%",\n      "fontSize": 15\n    },\n    {\n      "id": "24d825ab-5d9a-4c03-ad01-b3e341313905",\n      "kind": "text",\n      "x": 326,\n      "y": 211,\n      "width": 112,\n      "height": 19,\n      "fill": "#b9d4c0",\n      "text": "WEEK OVER WEEK",\n      "fontSize": 10\n    },\n    {\n      "id": "3bcc274a-271e-4209-bc2e-d4aa486f66b0",\n      "kind": "rectangle",\n      "x": 24,\n      "y": 271,\n      "width": 432,\n      "height": 225,\n      "fill": "#ffffff"\n    },\n    {\n      "id": "ec8f0706-48cf-48fc-bfaa-9da6382c8120",\n      "kind": "text",\n      "x": 43,\n      "y": 284,\n      "width": 292,\n      "height": 31,\n      "fill": "#162d29",\n      "text": "Usage this week",\n      "fontSize": 22\n    },\n    {\n      "id": "c964b9a0-5b56-44d0-b7e8-b54c0126a362",\n      "kind": "rectangle",\n      "x": 355,\n      "y": 288,\n      "width": 82,\n      "height": 25,\n      "fill": "#f2f4ed"\n    },\n    {\n      "id": "619c0778-a0e9-4cb3-bb1a-3bd37d1133cd",\n      "kind": "text",\n      "x": 374,\n      "y": 291,\n      "width": 59,\n      "height": 19,\n      "fill": "#53645c",\n      "text": "7 DAYS",\n      "fontSize": 10\n    },\n    {\n      "id": "eb3bea97-4790-431a-b010-de48bf80ed37",\n      "kind": "text",\n      "x": 43,\n      "y": 318,\n      "width": 70,\n      "height": 16,\n      "fill": "#53645c",\n      "text": "kWh",\n      "fontSize": 10\n    },\n    {\n      "id": "42bc71bd-f4a4-4fab-9fd8-0630900acb6a",\n      "kind": "text",\n      "x": 44,\n      "y": 333,\n      "width": 26,\n      "height": 17,\n      "fill": "#53645c",\n      "text": "12",\n      "fontSize": 11\n    },\n    {\n      "id": "99b7f54e-e777-46b4-803e-0ca95fac3968",\n      "kind": "rectangle",\n      "x": 72,\n      "y": 340,\n      "width": 360,\n      "height": 1,\n      "fill": "#e0e7db"\n    },\n    {\n      "id": "b4a4716e-7b6e-48e0-a817-c7243e2ef364",\n      "kind": "text",\n      "x": 44,\n      "y": 365,\n      "width": 26,\n      "height": 17,\n      "fill": "#53645c",\n      "text": "8",\n      "fontSize": 11\n    },\n    {\n      "id": "e5fa9959-e601-4705-ae78-b14c183afae1",\n      "kind": "rectangle",\n      "x": 72,\n      "y": 372,\n      "width": 360,\n      "height": 1,\n      "fill": "#e0e7db"\n    },\n    {\n      "id": "657c56d6-d38e-4488-b6a8-17eb2e121ceb",\n      "kind": "text",\n      "x": 44,\n      "y": 397,\n      "width": 26,\n      "height": 17,\n      "fill": "#53645c",\n      "text": "4",\n      "fontSize": 11\n    },\n    {\n      "id": "d13b7b90-147a-411c-9469-5012d72cecbb",\n      "kind": "rectangle",\n      "x": 72,\n      "y": 404,\n      "width": 360,\n      "height": 1,\n      "fill": "#e0e7db"\n    },\n    {\n      "id": "880cb106-355a-415d-ad93-3e82390123ff",\n      "kind": "text",\n      "x": 44,\n      "y": 429,\n      "width": 26,\n      "height": 17,\n      "fill": "#53645c",\n      "text": "0",\n      "fontSize": 11\n    },\n    {\n      "id": "ca4e6126-6edc-48e4-95a7-50c07ca43b4d",\n      "kind": "rectangle",\n      "x": 72,\n      "y": 436,\n      "width": 360,\n      "height": 1,\n      "fill": "#e0e7db"\n    },\n    {\n      "id": "9854a56c-9082-48f8-8c20-76d97323708d",\n      "kind": "rectangle",\n      "x": 83,\n      "y": 373,\n      "width": 29,\n      "height": 63,\n      "fill": "#b6cdb9"\n    },\n    {\n      "id": "ea93dda3-4088-4e65-be88-a2fe906d3afd",\n      "kind": "text",\n      "x": 93,\n      "y": 445,\n      "width": 15,\n      "height": 19,\n      "fill": "#53645c",\n      "text": "T",\n      "fontSize": 11\n    },\n    {\n      "id": "9b0cd1e9-9914-4352-ab24-0e93ecf12b40",\n      "kind": "rectangle",\n      "x": 134,\n      "y": 356,\n      "width": 29,\n      "height": 80,\n      "fill": "#b6cdb9"\n    },\n    {\n      "id": "f02aae1d-d190-4c61-95f0-823896101270",\n      "kind": "text",\n      "x": 144,\n      "y": 445,\n      "width": 15,\n      "height": 19,\n      "fill": "#53645c",\n      "text": "W",\n      "fontSize": 11\n    },\n    {\n      "id": "836856b1-5a65-4767-be8a-fa947ea38a60",\n      "kind": "rectangle",\n      "x": 185,\n      "y": 365,\n      "width": 29,\n      "height": 71,\n      "fill": "#b6cdb9"\n    },\n    {\n      "id": "c530f562-03c9-43ae-8be4-74f9130ceb22",\n      "kind": "text",\n      "x": 195,\n      "y": 445,\n      "width": 15,\n      "height": 19,\n      "fill": "#53645c",\n      "text": "T",\n      "fontSize": 11\n    },\n    {\n      "id": "9431aa35-add3-4a40-b91b-52c1d6dc31aa",\n      "kind": "rectangle",\n      "x": 236,\n      "y": 346,\n      "width": 29,\n      "height": 90,\n      "fill": "#b6cdb9"\n    },\n    {\n      "id": "6473e35b-8577-4cb9-8ae3-210e43f521bd",\n      "kind": "text",\n      "x": 246,\n      "y": 445,\n      "width": 15,\n      "height": 19,\n      "fill": "#53645c",\n      "text": "F",\n      "fontSize": 11\n    },\n    {\n      "id": "2c131437-31f7-419b-bb82-0c2e1fa1df0e",\n      "kind": "rectangle",\n      "x": 287,\n      "y": 360,\n      "width": 29,\n      "height": 76,\n      "fill": "#b6cdb9"\n    },\n    {\n      "id": "70520830-40f9-4dee-b24d-4225380050e1",\n      "kind": "text",\n      "x": 297,\n      "y": 445,\n      "width": 15,\n      "height": 19,\n      "fill": "#53645c",\n      "text": "S",\n      "fontSize": 11\n    },\n    {\n      "id": "ad53584c-8b48-4bd8-8595-acb2c6f54717",\n      "kind": "rectangle",\n      "x": 338,\n      "y": 340,\n      "width": 29,\n      "height": 96,\n      "fill": "#b6cdb9"\n    },\n    {\n      "id": "fa262b5d-f85b-443f-9795-63495ab66f84",\n      "kind": "text",\n      "x": 348,\n      "y": 445,\n      "width": 15,\n      "height": 19,\n      "fill": "#53645c",\n      "text": "S",\n      "fontSize": 11\n    },\n    {\n      "id": "6d4fd84a-1497-4835-af2e-5e3b91500767",\n      "kind": "rectangle",\n      "x": 389,\n      "y": 369,\n      "width": 29,\n      "height": 67,\n      "fill": "#9bcf5a"\n    },\n    {\n      "id": "fbaf725a-a9e9-417f-8a6f-cb1db0d57cad",\n      "kind": "text",\n      "x": 399,\n      "y": 445,\n      "width": 15,\n      "height": 19,\n      "fill": "#53645c",\n      "text": "M",\n      "fontSize": 11\n    },\n    {\n      "id": "d1d165a5-6691-4aa9-9c32-c58ff8a001bb",\n      "kind": "ellipse",\n      "x": 43,\n      "y": 472,\n      "width": 8,\n      "height": 8,\n      "fill": "#9bcf5a"\n    },\n    {\n      "id": "1f9f9d99-52df-4122-9a07-7d4fdb9232bb",\n      "kind": "text",\n      "x": 56,\n      "y": 467,\n      "width": 78,\n      "height": 18,\n      "fill": "#53645c",\n      "text": "Today",\n      "fontSize": 11\n    },\n    {\n      "id": "c86df809-5349-4db6-ae80-2d790ae4e3b6",\n      "kind": "text",\n      "x": 357,\n      "y": 467,\n      "width": 80,\n      "height": 18,\n      "fill": "#53645c",\n      "text": "Nov 10–16",\n      "fontSize": 11\n    },\n    {\n      "id": "dd9a50d1-6f7b-4707-aa9f-b2de2155ba08",\n      "kind": "rectangle",\n      "x": 24,\n      "y": 512,\n      "width": 432,\n      "height": 63,\n      "fill": "#e4ebda"\n    },\n    {\n      "id": "360b0b73-7c9a-4e72-9437-31ae274f3865",\n      "kind": "ellipse",\n      "x": 42,\n      "y": 526,\n      "width": 34,\n      "height": 34,\n      "fill": "#ccdfb9"\n    },\n    {\n      "id": "1ed98640-8595-414a-bbe8-d67aca971039",\n      "kind": "text",\n      "x": 51,\n      "y": 529,\n      "width": 19,\n      "height": 25,\n      "fill": "#133d35",\n      "text": "↘",\n      "fontSize": 15\n    },\n    {\n      "id": "8f9c01bb-41fd-464c-9c54-21029a90fdc1",\n      "kind": "text",\n      "x": 89,\n      "y": 521,\n      "width": 330,\n      "height": 24,\n      "fill": "#162d29",\n      "text": "Off-peak starts at 9 PM",\n      "fontSize": 16\n    },\n    {\n      "id": "8b8eb98a-aa79-49bb-a5c5-24bfa105095f",\n      "kind": "text",\n      "x": 89,\n      "y": 547,\n      "width": 338,\n      "height": 16,\n      "fill": "#53645c",\n      "text": "Shift your next laundry cycle to save.",\n      "fontSize": 12\n    }\n  ]\n}\n',
+            sceneDeserialize_deserialize,
+          ),
+          "Valid Current demo document",
+          $debugJsonError,
+        );
+      default:
+        return Scene.blank();
+    }
   },
 
   load(project, server) {
@@ -100,10 +125,16 @@ export function list() {
       title: "Orbit study",
     },
     {
-      id: WEB_APP,
-      title: "Web app mockup",
+      id: CURRENT,
+      title: "Current — Home energy",
     },
   ];
+  const legacy = blankMockup();
+  const result = Project.load(legacy, false);
+  const document = result.TAG === "Ok" ? result._0 : undefined;
+  if (document != null && document.scene != null) {
+    projects.push(legacy);
+  }
   const value = savedProjects();
   let warning;
   if (value.TAG === "Ok") {
@@ -116,7 +147,14 @@ export function list() {
 }
 
 export function find(id) {
-  return list()[0].find((project) => project.id === id);
+  return id === WEB_APP ? blankMockup() : list()[0].find((project) => project.id === id);
+}
+
+function blankMockup() {
+  return {
+    id: WEB_APP,
+    title: "Web app mockup",
+  };
 }
 
 export function route() {

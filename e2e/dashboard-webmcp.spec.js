@@ -25,7 +25,7 @@ test("an agent lists, creates, and opens a project, then edits its design", asyn
   const initial = await list();
   expect(initial).toEqual([
     { id: "orbit", title: "Orbit study" },
-    { id: "web-app", title: "Web app mockup" }
+    { id: "current", title: "Current — Home energy" }
   ]);
 
   const project = await page.webmcp.callTool("create_project", { title: "Weather dashboard" });

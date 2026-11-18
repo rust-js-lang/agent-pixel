@@ -4,16 +4,20 @@ test("open projects from the dashboard and keep their drafts separate", async ({
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Design projects" })).toBeVisible();
   const orbit = page.getByRole("link", { name: "Orbit study 7 layers" });
-  const webApp = page.getByRole("link", { name: "Web app mockup Empty artboard" });
+  const current = page.getByRole("link", { name: "Current — Home energy 50 layers" });
+  await expect(page.getByRole("region", { name: "Projects" }).getByRole("link")).toHaveCount(2);
   await expect(orbit).toBeVisible();
-  await webApp.click();
-  await expect(page).toHaveURL(/\?project=web-app$/);
-  await expect(page.getByRole("heading", { name: "Web app mockup" })).toBeVisible();
+  await current.click();
+  await expect(page).toHaveURL(/\?project=current$/);
+  await expect(page.getByRole("heading", { name: "Current — Home energy" })).toBeVisible();
   await expect(page.locator("#agent")).toHaveText("WebMCP tools ready");
+  const currentDesign = await page.webmcp.callTool("read_design");
+  expect(currentDesign.scene.layers).toHaveLength(50);
+  await expect(page.locator("#shapes").getByText("Home energy", { exact: true })).toBeVisible();
   await page.webmcp.callTool("edit_layer", { kind: "rectangle", fill: "#247a69" });
 
   await page.getByRole("link", { name: "Projects", exact: false }).click();
-  await expect(page.getByRole("link", { name: "Web app mockup 1 layer" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Current — Home energy 51 layers" })).toBeVisible();
   await orbit.click();
   await expect(page.locator("#agent")).toHaveText("WebMCP tools ready");
   const orbitDesign = await page.webmcp.callTool("read_design");
@@ -21,7 +25,13 @@ test("open projects from the dashboard and keep their drafts separate", async ({
 
   await page.goto("/?design");
   await expect(page.locator("#agent")).toHaveText("WebMCP tools ready");
-  expect((await page.webmcp.callTool("read_design")).scene.layers).toHaveLength(1);
+  expect((await page.webmcp.callTool("read_design")).scene.layers).toHaveLength(0);
+  await page.webmcp.callTool("edit_layer", { kind: "ellipse" });
+  await page.getByRole("link", { name: "Projects", exact: false }).click();
+  await expect(page.getByRole("link", { name: "Web app mockup 1 layer" })).toBeVisible();
+  await page.getByRole("link", { name: "Current — Home energy 51 layers" }).click();
+  await expect(page.locator("#agent")).toHaveText("WebMCP tools ready");
+  expect((await page.webmcp.callTool("read_design")).scene.layers).toHaveLength(51);
 });
 
 test("create a named project and reopen it on a narrow viewport", async ({ page }) => {

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use webapi::global::crypto;
 
 const ORBIT: &str = "orbit";
+const CURRENT: &str = "current";
 const WEB_APP: &str = "web-app";
 const CATALOG: &str = "agent-pixel:projects:v1";
 
@@ -32,10 +33,11 @@ impl Project {
     }
 
     pub fn initial_scene(&self) -> Scene {
-        if self.is_poster() {
-            Scene::poster()
-        } else {
-            Scene::blank()
+        match self.id.as_str() {
+            ORBIT => Scene::poster(),
+            CURRENT => serde_json::from_str(include_str!("../demos/current.json"))
+                .expect("Valid Current demo document"),
+            _ => Scene::blank(),
         }
     }
 
@@ -60,10 +62,19 @@ pub fn list() -> (Vec<Project>, Option<String>) {
             title: "Orbit study".into(),
         },
         Project {
-            id: WEB_APP.into(),
-            title: "Web app mockup".into(),
+            id: CURRENT.into(),
+            title: "Current — Home energy".into(),
         },
     ];
+    let legacy = blank_mockup();
+    if legacy
+        .load(false)
+        .ok()
+        .flatten()
+        .is_some_and(|document| document.scene.is_some())
+    {
+        projects.push(legacy);
+    }
     let warning = match saved_projects() {
         Ok(saved) => {
             projects.extend(saved.into_iter().rev());
@@ -75,7 +86,18 @@ pub fn list() -> (Vec<Project>, Option<String>) {
 }
 
 pub fn find(id: &str) -> Option<Project> {
-    list().0.into_iter().find(|project| project.id == id)
+    if id == WEB_APP {
+        Some(blank_mockup())
+    } else {
+        list().0.into_iter().find(|project| project.id == id)
+    }
+}
+
+fn blank_mockup() -> Project {
+    Project {
+        id: WEB_APP.into(),
+        title: "Web app mockup".into(),
+    }
 }
 
 pub fn route() -> Option<(String, bool)> {
