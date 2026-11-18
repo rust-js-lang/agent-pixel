@@ -1,0 +1,10 @@
+.artboard {
+  position: relative; aspect-ratio: 4/5; background: #f5edda;
+  box-shadow: 0 5px 22px #19241824; container-type: inline-size; overflow: hidden;
+}
+.mockup { background: #fff; }
+.preview-layer { position: absolute; }
+.preview-text {
+  display: flex; align-items: center; overflow: hidden; overflow-wrap: anywhere;
+  white-space: pre-wrap; line-height: 1.15;
+}

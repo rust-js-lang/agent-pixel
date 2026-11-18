@@ -1,3 +1,4 @@
+use crate::{dashboard_styles::STYLES as DASHBOARD, shell_styles::STYLES as SHELL};
 use crate::{
     projects::{self, Project},
     view,
@@ -26,17 +27,17 @@ fn project_card(project: &Project) -> JSX::Element {
         .map(view::preview_layer)
         .collect::<Vec<_>>();
     jsx! {
-        <a key={project.id.clone()} className="project-card" href={project.href()}>
-            <div className={if poster { "project-tile orbit-tile" } else { "project-tile" }} aria-hidden="true">
-                <div className={if poster { "project-preview orbit-preview" } else { "project-preview" }}>
+        <a key={project.id.clone()} className={DASHBOARD.project_card()} href={project.href()}>
+            <div className={if poster { format!("{} {}", DASHBOARD.project_tile(), DASHBOARD.orbit_tile()) } else { DASHBOARD.project_tile() }} aria-hidden="true">
+                <div className={if poster { format!("{} {}", DASHBOARD.project_preview(), DASHBOARD.orbit_preview()) } else { DASHBOARD.project_preview() }}>
                     {preview}
-                    {poster.then(|| jsx! { <b className="preview-caption">"Orbit study."</b> })}
-                    {(count == 0).then(|| jsx! { <span className="empty-preview">"＋"</span> })}
+                    {poster.then(|| jsx! { <b className={DASHBOARD.preview_caption()}>"Orbit study."</b> })}
+                    {(count == 0).then(|| jsx! { <span className={DASHBOARD.empty_preview()}>"＋"</span> })}
                 </div>
             </div>
-            <div className="project-meta">
+            <div className={DASHBOARD.project_meta()}>
                 <div><h2>{project.title.clone()}</h2><p>{label}</p></div>
-                <span className="project-arrow" aria-hidden="true">"↗"</span>
+                <span className={DASHBOARD.project_arrow()} aria-hidden="true">"↗"</span>
             </div>
         </a>
     }
@@ -48,14 +49,14 @@ pub fn Dashboard() -> JSX::Element {
     let cards = projects.iter().map(project_card).collect::<Vec<_>>();
     jsx! {
         <>
-            <header className="dashboard-header">
-                <b className="brand"><i>"▦"</i>" Agent Pixel"</b>
+            <header className={SHELL.header()}>
+                <b className={SHELL.brand()}><i>"▦"</i>" Agent Pixel"</b>
                 <a href="https://github.com/rust-js-lang/agent-pixel/blob/main/DESIGN.md">"Design doc ↗"</a>
             </header>
-            <main className="project-dashboard">
-                <div className="project-heading">
+            <main className={DASHBOARD.project_dashboard()}>
+                <div className={DASHBOARD.project_heading()}>
                     <div><h1>"Design projects"</h1><p>"Open an artboard or start a new design."</p></div>
-                    <form className="create-project" action={move |data: &webapi::FormData| {
+                    <form className={DASHBOARD.create_project()} action={move |data: &webapi::FormData| {
                         if let Some(FormDataEntryValue::Str(title)) = data.get("name") {
                             match projects::create(&title) {
                                 Ok(project) => window_global::location().assign(&project.href()),
@@ -64,14 +65,14 @@ pub fn Dashboard() -> JSX::Element {
                         }
                     }}>
                         <label htmlFor="project-name">"Project name"</label>
-                        <div className="project-controls">
+                        <div className={DASHBOARD.project_controls()}>
                             <input id="project-name" name="name" placeholder="Untitled design" required maxLength={80} />
                             <button type="submit">"＋ New project"</button>
                         </div>
                     </form>
                 </div>
-                <div role="status" className="project-status">{error.clone().or(warning)}</div>
-                <section className="project-grid" aria-label="Projects">{cards}</section>
+                <div role="status" className={DASHBOARD.project_status()}>{error.clone().or(warning)}</div>
+                <section className={DASHBOARD.project_grid()} aria-label="Projects">{cards}</section>
             </main>
         </>
     }
@@ -83,7 +84,7 @@ pub fn home() -> JSX::Element {
 
 pub fn missing() -> JSX::Element {
     jsx! {
-        <main className="project-dashboard">
+        <main className={DASHBOARD.project_dashboard()}>
             <h1>"Project unavailable"</h1>
             <p>"This project could not be found in this browser."</p>
             <a href="./">"Back to projects"</a>

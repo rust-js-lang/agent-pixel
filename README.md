@@ -88,4 +88,4 @@ Open **Current — Reminder journey** for five editable screens of the off-peak 
 
 Use **−** and **+** beside the editor toolbar, or use Ctrl/Cmd with **+** or **−**. Click the percentage or press Ctrl/Cmd+0 to return to fit. Trackpad pinch gestures that arrive as a modified wheel event and Ctrl/Cmd+wheel over the canvas zoom the artboard around the pointer. Regular scrolling pans the workspace when the artboard is larger than the viewport.
 
-The canvas and zoom controls use `frontend/src/canvas.module.css`. rust-js checks the class names in `canvas_styles.rs` against that file. Bun bundles the scoped rules into `app.css`, which loads after the shared site stylesheet.
+The dashboard, editor, canvas, shared artboard, journey prototype, and page shell use CSS Modules in `frontend/src`. rust-js checks the class names in each corresponding Rust binding. Bun bundles the scoped rules into `app.css`. The shared site stylesheet contains only document-wide defaults.

@@ -1,5 +1,10 @@
+mod artboard_styles;
 mod browser;
 mod canvas_styles;
+mod dashboard_styles;
+mod editor_styles;
+mod journey_styles;
+mod shell_styles;
 
 mod components;
 mod dashboard;

@@ -1,0 +1,13 @@
+.header, .footer {
+  background: #20241f; color: #f6f7ed; display: flex; align-items: center; padding: 0 24px;
+}
+.header { height: 62px; gap: 45px; }
+.header a { margin-left: auto; color: inherit; font-size: 13px; }
+.header a + a { margin-left: 0; }
+.brand { font-size: 21px; letter-spacing: -1px; white-space: nowrap; }
+.brand i { font-style: normal; color: #daf79c; }
+.crumb { color: #bcc3b6; font-size: 13px; }
+.crumb strong { color: white; }
+.footer { min-height: 32px; font: 11px monospace; }
+@media (max-width: 760px) { .crumb { display: none; } }
+@media (max-width: 500px) { .header { gap: 14px; padding-inline: 12px; } }

@@ -1,0 +1,83 @@
+.layout {
+  min-height: calc(100dvh - 94px);
+  display: grid;
+  grid-template-columns: minmax(154px, 205px) minmax(0, 1fr) minmax(160px, 215px);
+}
+.layout aside { min-width: 0; padding: 29px 18px; }
+.layout h2 { margin: 9px 0 5px; font-size: 21px; letter-spacing: -.75px; }
+.layout p, .agent { font-size: 12px; color: #596256; }
+.layout hr { border: 0; border-top: 1px solid #d9ded4; margin: 23px 0; }
+.layout h3 { font-size: 13px; margin: 18px 0 12px; }
+.eyebrow, .legend, .imprint, .caption small {
+  font: 600 10px/1.3 "IBM Plex Mono", monospace; letter-spacing: 1.4px;
+}
+.eyebrow { color: #62705e; }
+.layer {
+  width: 100%; text-align: left; border: 0; background: none;
+  padding: 10px 8px; border-radius: 5px; text-transform: capitalize;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.layer[aria-pressed="true"] { background: #e3edda; }
+.layer i { display: inline-block; width: 12px; height: 12px; border: 1px solid #0003; margin-right: 9px; }
+.workspace {
+  background: #e6e8e0 radial-gradient(#c6cbbf .8px, transparent .8px) 0 0 / 12px 12px;
+  border-inline: 1px solid #cdd3c8; display: flex; align-items: center;
+  flex-direction: column; min-width: 0; height: calc(100dvh - 94px); min-height: 380px;
+}
+.legend, .imprint, .caption small { display: flex; justify-content: space-between; }
+.legend { font-size: 9px; color: #5e685c; margin-bottom: 8px; }
+.imprint, .caption { position: absolute; left: 7%; right: 7%; pointer-events: none; }
+.imprint { top: 4%; font-size: 2cqw; }
+.caption { bottom: 4%; }
+.caption b { font-size: 13cqw; letter-spacing: -.085em; line-height: 1.1; }
+.caption small { font-size: 1.8cqw; border-top: 1px solid; margin-top: 2%; padding-top: 2%; }
+.shapes { position: absolute; inset: 0; }
+.shape { position: absolute; border: 0; touch-action: none; cursor: move; padding: 0; }
+.shape:focus-visible, .shape:hover { outline: 2px dashed #416cd7; }
+.shape.text-layer { text-align: left; display: block; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.15; }
+.tools { display: flex; background: #242922; border-radius: 7px; padding: 4px; box-shadow: 0 3px 9px #20241f28; }
+.tools button { background: transparent; color: white; border: 0; padding: 9px; font-size: 12px; }
+.tools button:hover { background: #414a3e; }
+.layout form { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.layout form label, .color { display: flex; align-items: center; gap: 7px; border: 1px solid #cdd3c8; padding: 7px; border-radius: 4px; font-size: 12px; }
+.layout form input { width: 100%; border: 0; background: transparent; }
+.color input { border: 0; width: 25px; height: 23px; padding: 0; cursor: pointer; }
+.text-field { display: block; margin-bottom: 8px; }
+.text-field input { width: 100%; }
+.server button { margin-top: 15px; }
+
+.component-library {
+  margin-top: 15px;
+  padding: 8px;
+  border: 1px solid #d1dbcc;
+  border-radius: 6px;
+  background: #edf2e9;
+  font-size: 12px;
+}
+.component-library summary { font-weight: 600; cursor: pointer; }
+.layout .component-library form { display: grid; grid-template-columns: minmax(0, 1fr); margin-top: 10px; }
+.layout .component-library form > label { border: 0; padding: 0; }
+.component-library select { width: 100%; padding: 5px; font: inherit; color: inherit; background: white; }
+.component-position { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.component-position label { min-width: 0; }
+.component-library button { padding: 6px; border: 0; border-radius: 4px; color: white; background: #263c2d; }
+.component-library button:disabled { opacity: .55; }
+
+@media (max-width: 760px) {
+  .layout { grid-template-columns: minmax(0, 1fr) 145px; }
+  .layout > aside:first-child { grid-column: 1 / -1; padding: 10px; }
+  .layout > aside:first-child > :not(.layers, nav) { display: none; }
+  .layers { display: flex; overflow: auto; }
+  .layer { white-space: nowrap; width: auto; }
+  .workspace { min-height: 340px; height: 68svh; }
+  .layout .properties { padding: 15px 10px; }
+}
+
+@media (max-width: 500px) {
+  .layout { display: flex; flex-direction: column; }
+  .layout .properties { padding: 10px 16px; }
+  .properties hr, .properties .eyebrow { display: none; }
+  .layout form:not(.component-library form) { grid-template-columns: repeat(4, 1fr); }
+  .properties h3 { margin: 8px 0; }
+  .color { width: max-content; }
+}

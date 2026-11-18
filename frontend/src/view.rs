@@ -1,5 +1,9 @@
-use crate::canvas_styles::STYLES;
 use crate::{Editor, edit, journey, select, sync_to_server, zoom};
+use crate::{
+    artboard_styles::STYLES as ARTBOARD, canvas_styles::STYLES as CANVAS,
+    editor_styles::STYLES as EDITOR_STYLES, journey_styles::STYLES as JOURNEY,
+    shell_styles::STYLES as SHELL,
+};
 
 use pixel_geometry::{
     BOARD_HEIGHT, BOARD_WIDTH,
@@ -130,9 +134,9 @@ fn layer_style(layer: &Layer) -> CSSProperties {
 
 pub fn preview_layer(layer: &Layer) -> JSX::Element {
     let class = if layer.kind == "text" {
-        "preview-layer preview-text"
+        format!("{} {}", ARTBOARD.preview_layer(), ARTBOARD.preview_text())
     } else {
-        "preview-layer"
+        ARTBOARD.preview_layer()
     };
     jsx! { <div key={layer.id.clone()} className={class} style={layer_style(layer)}>{layer.text.clone()}</div> }
 }
@@ -142,9 +146,9 @@ fn shape(layer: &Layer, linked: bool) -> JSX::Element {
     let id = layer.id.clone();
     let styles = layer_style(layer);
     let class = if layer.kind == "text" {
-        "shape text-layer"
+        format!("{} {}", EDITOR_STYLES.shape(), EDITOR_STYLES.text_layer())
     } else {
-        "shape"
+        EDITOR_STYLES.shape()
     };
     jsx! {
         <button key={layer.id.clone()} className={class} style={styles}
@@ -163,7 +167,7 @@ fn layer_button(layer: &Layer, selected: Option<&str>) -> JSX::Element {
         .background(layer.fill.clone())
         .border_radius(if layer.kind == "ellipse" { "50%" } else { "0" });
     jsx! {
-        <button key={layer.id.clone()} className="layer" aria-pressed={selected == Some(layer.id.as_str())}
+        <button key={layer.id.clone()} className={EDITOR_STYLES.layer()} aria-pressed={selected == Some(layer.id.as_str())}
             onClick={move |_| select(id.clone())}>
             <i style={swatch} />{label(layer)}
         </button>
@@ -218,7 +222,7 @@ fn inspector(layer: &Layer, version: u32) -> JSX::Element {
     let text = layer.text.as_ref().map(|text| jsx! {
         <>
             <h3>"Text"</h3>
-            <label className="text-field">
+            <label className={EDITOR_STYLES.text_field()}>
                 <input key={format!("{text_id}-{text}-{version}")} aria-label="Text content"
                     defaultValue={text.clone()} onBlur={move |event| edit(Patch { id: Some(text_id.clone()), text: Some(event.current_target().value()), ..Patch::default() })} />
             </label>
@@ -231,7 +235,7 @@ fn inspector(layer: &Layer, version: u32) -> JSX::Element {
             <form id="fields" onSubmit={|event| event.prevent_default()}>{fields}</form>
             {text}
             <h3>{if layer.kind == "text" { "Color" } else { "Fill" }}</h3>
-            <label className="color">
+            <label className={EDITOR_STYLES.color()}>
                 <input type="color" id="fill" value={layer.fill.clone()}
                     onChange={move |event| edit(Patch {
                         id: Some(id.clone()), fill: Some(event.current_target().value()), ..Patch::default()
@@ -250,7 +254,7 @@ fn instance_inspector(instance: &ComponentInstance) -> JSX::Element {
         .map(|variant| jsx! { <option key={variant.id} value={variant.id}>{variant.name}</option> })
         .collect::<Vec<_>>();
     jsx! {
-        <div className="component-library">
+        <div className={EDITOR_STYLES.component_library()}>
             <h2>{instance.family.clone()}</h2>
             <p>"Linked to Canopy UI"</p>
             <label htmlFor="instance-variant">"Instance variant"</label>
@@ -273,7 +277,7 @@ fn component_picker(disabled: bool) -> JSX::Element {
         <option key={variant.id} value={variant.id}>{format!("{} · {}", variant.family, variant.name)}</option>
     }).collect::<Vec<_>>();
     jsx! {
-        <details className="component-library">
+        <details className={EDITOR_STYLES.component_library()}>
             <summary>"Canopy UI components"</summary>
             <form action={|data: &webapi::FormData| {
                 use webapi::FormDataEntryValue::Str;
@@ -290,7 +294,7 @@ fn component_picker(disabled: bool) -> JSX::Element {
             }}>
                 <label htmlFor="component-variant">"Component variant"</label>
                 <select id="component-variant" name="variant">{options}</select>
-                <div className="component-position">
+                <div className={EDITOR_STYLES.component_position()}>
                     <label>"X"<input aria-label="Component X" name="x" type="number" min={0} max={BOARD_WIDTH - 1} defaultValue={40} required /></label>
                     <label>"Y"<input aria-label="Component Y" name="y" type="number" min={0} max={BOARD_HEIGHT - 1} defaultValue={40} required /></label>
                 </div>
@@ -311,11 +315,11 @@ fn journey_navigation(current: &journey::Screen, preview: bool) -> JSX::Element 
         "Play prototype"
     };
     jsx! {
-        <nav className="journey-navigation" aria-label="Journey screens">
+        <nav className={if preview { JOURNEY.journey_navigation() } else { format!("{} {}", JOURNEY.journey_navigation(), JOURNEY.editor_navigation()) }} aria-label="Journey screens">
             <h3>"Journey screens"</h3>
-            <div className="journey-steps">{screens}</div>
-            <div className="journey-actions">
-                <a className="journey-mode" href={journey::href(current.id, !preview)}>{name}</a>
+            <div className={JOURNEY.journey_steps()}>{screens}</div>
+            <div className={JOURNEY.journey_actions()}>
+                <a className={JOURNEY.journey_mode()} href={journey::href(current.id, !preview)}>{name}</a>
                 <a href={journey::HANDOFF}>"Developer handoff ↗"</a>
             </div>
         </nav>
@@ -332,32 +336,32 @@ pub(crate) fn prototype(editor: &Editor) -> JSX::Element {
             .top(percent(layer.y, BOARD_HEIGHT)).width(percent(layer.width, BOARD_WIDTH))
             .height(percent(layer.height, BOARD_HEIGHT));
         jsx! {
-            <a className="prototype-hotspot" href={journey::href(screen.next, true)} style={placement}
+            <a className={JOURNEY.prototype_hotspot()} href={journey::href(screen.next, true)} style={placement}
                 aria-label={screen.primary} />
         }
     });
     jsx! {
         <>
-            <header>
-                <b className="brand"><i>"▦"</i>" Agent Pixel"</b>
+            <header className={SHELL.header()}>
+                <b className={SHELL.brand()}><i>"▦"</i>" Agent Pixel"</b>
                 <a href="./">"← Projects"</a>
             </header>
-            <main className="journey-preview">
-                <section className="prototype-canvas" aria-label="Prototype artboard">
+            <main className={JOURNEY.journey_preview()}>
+                <section className={JOURNEY.prototype_canvas()} aria-label="Prototype artboard">
                     <h1>{screen.title}</h1>
-                    <div id="art" className="mockup">
+                    <div id="art" className={format!("{} {}", ARTBOARD.artboard(), ARTBOARD.mockup())}>
                         <div aria-hidden="true">{layers}</div>
                         {hotspot}
                     </div>
                 </section>
-                <div className="prototype-guide">
+                <div className={JOURNEY.prototype_guide()}>
                     {journey_navigation(screen, true)}
                     {(screen.id == "review").then(|| jsx! {
-                        <a href={journey::href("error", true)} className="simulate-failure">"Simulate save failure"</a>
+                        <a href={journey::href("error", true)} className={JOURNEY.simulate_failure()}>"Simulate save failure"</a>
                     })}
                 </div>
             </main>
-            <footer role="status" id="status">{editor.status.clone()}</footer>
+            <footer className={SHELL.footer()} role="status" id="status">{editor.status.clone()}</footer>
         </>
     }
 }
@@ -404,57 +408,57 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
     let disabled = editor.busy || editor.document.scene.is_none();
     jsx! {
         <>
-            <header>
-                <b className="brand"><i>"▦"</i>" Agent Pixel"</b>
-                <span className="crumb">"Workspace / "<strong>{document_title}</strong></span>
+            <header className={SHELL.header()}>
+                <b className={SHELL.brand()}><i>"▦"</i>" Agent Pixel"</b>
+                <span className={SHELL.crumb()}>"Workspace / "<strong>{document_title}</strong></span>
                 <a href="./">"← Projects"</a>
                 <a href="https://github.com/rust-js-lang/agent-pixel/blob/main/DESIGN.md">"Design doc ↗"</a>
             </header>
-            <main className={if screen.is_some() { "journey-editor" } else { "design-editor" }}>
+            <main className={EDITOR_STYLES.layout()}>
                 <aside>
-                    <div className="eyebrow">"DOCUMENT"</div><h2>{document_title}</h2>
+                    <div className={EDITOR_STYLES.eyebrow()}>"DOCUMENT"</div><h2>{document_title}</h2>
                     <p>{if !poster { "Mobile artboard" } else { "Poster composition" }}</p>
-                    {screen.map(|screen| journey_navigation(screen, false))}<hr /><h3>"Layers"</h3><div id="layers">{layer_list}</div>
+                    {screen.map(|screen| journey_navigation(screen, false))}<hr /><h3>"Layers"</h3><div id="layers" className={EDITOR_STYLES.layers()}>{layer_list}</div>
                 </aside>
-                <section className="workspace" aria-label="Canvas">
-                    <div id="canvas-scroll" className={STYLES.canvas_scroll()} ref={zoom::attach}>
-                        <div className={STYLES.canvas_stage()}>
-                    <div className="sheet" style={sheet_style}>
-                        <div className="legend">{screen.map_or("ARTBOARD 01", |screen| screen.title)} <span>{format!("{BOARD_WIDTH} × {BOARD_HEIGHT}")}</span></div>
-                        <div id="art" className={if !poster { "mockup" } else { "poster" }}>
-                            {(poster).then(|| jsx! { <div className="imprint">"FORM STUDIES" <span>"SERIES 01 / 03"</span></div> })}
-                            <div id="shapes">{shape_list}</div>
-                            {(poster).then(|| jsx! { <div className="caption"><b>"Orbit study."</b><small>"KINETIC FORMS" <span>"FIG. 01"</span></small></div> })}
+                <section className={EDITOR_STYLES.workspace()} aria-label="Canvas">
+                    <div id="canvas-scroll" className={CANVAS.canvas_scroll()} ref={zoom::attach}>
+                        <div className={CANVAS.canvas_stage()}>
+                    <div style={sheet_style}>
+                        <div className={EDITOR_STYLES.legend()}>{screen.map_or("ARTBOARD 01", |screen| screen.title)} <span>{format!("{BOARD_WIDTH} × {BOARD_HEIGHT}")}</span></div>
+                        <div id="art" className={if poster { ARTBOARD.artboard() } else { format!("{} {}", ARTBOARD.artboard(), ARTBOARD.mockup()) }}>
+                            {(poster).then(|| jsx! { <div className={EDITOR_STYLES.imprint()}>"FORM STUDIES" <span>"SERIES 01 / 03"</span></div> })}
+                            <div id="shapes" className={EDITOR_STYLES.shapes()}>{shape_list}</div>
+                            {(poster).then(|| jsx! { <div className={EDITOR_STYLES.caption()}><b>"Orbit study."</b><small>"KINETIC FORMS" <span>"FIG. 01"</span></small></div> })}
                         </div>
                     </div>
                         </div>
                     </div>
-                    <div className={STYLES.canvas_toolbar()}>
-                    <div className="tools">
+                    <div className={CANVAS.canvas_toolbar()}>
+                    <div className={EDITOR_STYLES.tools()}>
                         <button id="rect" disabled={disabled} onClick={|_| add("rectangle")}>"▢  Rectangle +"</button>
                         <button id="ellipse" disabled={disabled} onClick={|_| add("ellipse")}>"○  Ellipse +"</button>
                         <button disabled={disabled} onClick={|_| edit(Patch { kind: Some("text".into()), text: Some("Label".into()), font_size: Some(20), width: Some(170), height: Some(32), fill: Some("#20231f".into()), ..Patch::default() })}>"T  Text +"</button>
                     </div>
-                    <div className={STYLES.zoom_tools()} role="group" aria-label="Canvas zoom">
+                    <div className={CANVAS.zoom_tools()} role="group" aria-label="Canvas zoom">
                         <button type="button" aria-label="Zoom out" disabled={editor.zoom <= zoom::MIN} onClick={|_| zoom::step(false)}>"−"</button>
-                        <button className={STYLES.zoom_value()} type="button" title="Reset canvas zoom" aria-label={format!("Reset canvas zoom, current {zoom_label}")} onClick={|_| zoom::reset()}>{zoom_label}</button>
+                        <button className={CANVAS.zoom_value()} type="button" title="Reset canvas zoom" aria-label={format!("Reset canvas zoom, current {zoom_label}")} onClick={|_| zoom::reset()}>{zoom_label}</button>
                         <button type="button" aria-label="Zoom in" disabled={editor.zoom >= zoom::MAX} onClick={|_| zoom::step(true)}>"+"</button>
                     </div>
                     </div>
                 </section>
-                <aside className="properties">
-                    <div className="eyebrow">"INSPECTOR"</div>
+                <aside className={EDITOR_STYLES.properties()}>
+                    <div className={EDITOR_STYLES.eyebrow()}>"INSPECTOR"</div>
                     {component_picker(disabled)}
-                    {properties}<span id="agent">{editor.agent.clone()}</span>
+                    {properties}<span id="agent" className={EDITOR_STYLES.agent()}>{editor.agent.clone()}</span>
                     {editor.server.then(|| jsx! {
-                        <div id="server">
+                        <div id="server" className={EDITOR_STYLES.server()}>
                             <button disabled={disabled} onClick={|_| sync_to_server(false)}>"Save to server"</button>
                             <button disabled={disabled} onClick={|_| sync_to_server(true)}>"Load server copy"</button>
                         </div>
                     })}
                 </aside>
             </main>
-            <footer role="status" id="status">{editor.status.clone()}</footer>
+            <footer className={SHELL.footer()} role="status" id="status">{editor.status.clone()}</footer>
         </>
     }
 }
