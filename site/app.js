@@ -145,15 +145,34 @@ async function start() {
     save.onclick = async () => {
       save.disabled = true;
       try {
+        const submitted = scene;
         const response = await fetch("./api/document", { method: "PUT", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ revision, scene }) });
         if (!response.ok) throw Error(response.status === 409 ? "Server changed · Local draft kept" : "Server save failed");
         revision = (await response.json()).revision;
-        localStorage.setItem(storageKey, JSON.stringify({ revision, scene }));
-        status("Saved server revision " + revision);
+        if (scene === submitted) localStorage.removeItem(storageKey);
+        else localStorage.setItem(storageKey, JSON.stringify({ revision, scene }));
+        status(scene === submitted ? "Saved server revision " + revision : "Newer edits remain in your local draft");
       } catch (error) { report(error); } finally { save.disabled = false; }
     };
-    el("server").append(save);
+    const reload = document.createElement("button");
+    reload.textContent = "Load server copy";
+    reload.onclick = async () => {
+      if (!confirm("Replace the current draft with the saved server copy?")) return;
+      try {
+        const response = await fetch("./api/document");
+        if (!response.ok) throw Error("Server unavailable");
+        const saved = await response.json();
+        if (!saved.scene) throw Error("No saved server copy yet");
+        scene = (await request("restore", saved.scene)).scene;
+        revision = saved.revision;
+        selected = scene.layers.at(-1)?.id;
+        localStorage.removeItem(storageKey);
+        render();
+        status("Loaded server revision " + revision);
+      } catch (error) { report(error); }
+    };
+    el("server").append(save, reload);
   }
   await registerTools();
 }

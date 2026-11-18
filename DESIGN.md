@@ -33,7 +33,7 @@ Expose a read tool to discover artboard dimensions, layer IDs and bounds. A writ
 
 Keep geometry rules in a Rust library. Compile that library to ES modules with rust-js for the browser worker and link the same crate natively for the optional server. The browser adapter owns DOM, worker messages and WebMCP registration. Compare bounds cases in native Rust and emitted JavaScript before publishing.
 
-In server mode, serve the same static client and add document storage behind a same-origin API. A planned GET returns a snapshot and revision. PUT supplies the base revision. The server validates the complete candidate with the shared rules, commits it atomically and returns the new revision. On conflict preserve the user's local work and offer to reload the server copy. Start with single-user local hosting. Add authentication and document access checks before enabling shared remote editing.
+In server mode, the loopback Rust service serves the same static client and provides document storage behind a same-origin API. A GET returns a snapshot and revision. PUT supplies the base revision. The server validates the complete candidate with the shared rules, commits it atomically and returns the new revision. On conflict preserve the user's local work and offer to reload the server copy. The first implementation binds to localhost. Add authentication and document access checks before enabling shared remote editing.
 
 ## Performance and growth
 
