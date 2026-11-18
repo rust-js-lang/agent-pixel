@@ -4,10 +4,10 @@ import * as Journey from "./journey.js";
 import {
   Editor,
   addImage,
+  applyEdit,
   changeVariant,
   deleteSelection,
   edit,
-  editHierarchy,
   editor as editor$1,
   historyAction,
   placeComponent,
@@ -24,7 +24,11 @@ import EDITOR_STYLES from "./editor.module.css";
 import JOURNEY from "./journey.module.css";
 import SHELL from "./shell.module.css";
 
-import { BOARD_HEIGHT, BOARD_WIDTH } from "../../core/src/lib.js";
+import {
+  MAX_ARTBOARD_SIZE,
+  MIN_ARTBOARD_SIZE,
+  dimensionsDefault_default,
+} from "../../core/src/lib.js";
 import { useState } from "react";
 import { Scene } from "../../core/src/hierarchy.js";
 import { Layer, Scene as Scene$1 } from "../../core/src/scene.js";
@@ -65,12 +69,12 @@ const Drag = {
       $clamp(
         Math.min(Math.max(drag.x + dx, -2147483648), 2147483647),
         0,
-        (BOARD_WIDTH - drag.width) | 0,
+        (drag.board.width - drag.width) | 0,
       ),
       $clamp(
         Math.min(Math.max(drag.y + dy, -2147483648), 2147483647),
         0,
-        (BOARD_HEIGHT - drag.height) | 0,
+        (drag.board.height - drag.height) | 0,
       ),
     ];
   },
@@ -80,7 +84,7 @@ function percent(value, extent) {
   return `${$displayF64((value / extent) * 100)}%`;
 }
 
-function beginDrag(layer, event) {
+function beginDrag(layer, dimensions, event) {
   if (event.button !== 0) {
     return;
   }
@@ -98,8 +102,9 @@ function beginDrag(layer, event) {
         height: layer.height,
         originX: event.clientX,
         originY: event.clientY,
-        scaleX: BOARD_WIDTH / bounds.width,
-        scaleY: BOARD_HEIGHT / bounds.height,
+        board: dimensions,
+        scaleX: dimensions.width / bounds.width,
+        scaleY: dimensions.height / bounds.height,
       };
     },
     true,
@@ -107,17 +112,17 @@ function beginDrag(layer, event) {
   select(layer.id);
 }
 
-function setPosition(event, x, y) {
+function setPosition(event, x, y, board) {
   const style = event.currentTarget.style;
-  style.left = percent(x, BOARD_WIDTH);
-  style.top = percent(y, BOARD_HEIGHT);
+  style.left = percent(x, board.width);
+  style.top = percent(y, board.height);
 }
 
 function moveDrag(event) {
   $withBorrow(drag, (drag) => {
     if (drag != null) {
       const [x, y] = Drag.position(drag, event);
-      setPosition(event, x, y);
+      setPosition(event, x, y, drag.board);
     }
   });
 }
@@ -125,7 +130,7 @@ function moveDrag(event) {
 function endDrag(event, commit) {
   const drag$1 = $cellReplace($borrowMut(drag));
   if (drag$1 != null) {
-    setPosition(event, drag$1.x, drag$1.y);
+    setPosition(event, drag$1.x, drag$1.y, drag$1.board);
     const [x, y] = Drag.position(drag$1, event);
     if (commit && (x !== drag$1.x || y !== drag$1.y)) {
       edit({
@@ -137,17 +142,17 @@ function endDrag(event, commit) {
   }
 }
 
-function layerStyle(layer) {
+function layerStyle(layer, board) {
   return {
-    left: percent(layer.x, BOARD_WIDTH),
-    top: percent(layer.y, BOARD_HEIGHT),
-    width: percent(layer.width, BOARD_WIDTH),
-    height: percent(layer.height, BOARD_HEIGHT),
+    left: percent(layer.x, board.width),
+    top: percent(layer.y, board.height),
+    width: percent(layer.width, board.width),
+    height: percent(layer.height, board.height),
     background: layer.kind === "text" ? "transparent" : layer.fill,
     borderRadius: layer.kind === "ellipse" ? "50%" : "0",
     color: layer.fill,
     fontSize:
-      layer.fontSize != null ? `${$displayF64((layer.fontSize / BOARD_WIDTH) * 100)}cqw` : "",
+      layer.fontSize != null ? `${$displayF64((layer.fontSize / board.width) * 100)}cqw` : "",
   };
 }
 
@@ -166,22 +171,22 @@ function layerContent(layer, image) {
   }
 }
 
-export function previewLayer(layer, image) {
+export function previewLayer(layer, image, board) {
   const class$ =
     layer.kind === "text"
       ? `${ARTBOARD["preview-layer"]} ${ARTBOARD["preview-text"]}`
       : ARTBOARD["preview-layer"];
   return (
-    <div key={layer.id} className={class$} style={layerStyle(layer)}>
+    <div key={layer.id} className={class$} style={layerStyle(layer, board)}>
       {layerContent(layer, image)}
     </div>
   );
 }
 
-function shape(layer, linked, image) {
+function shape(layer, linked, image, board) {
   const captured = { ...layer };
   const id = layer.id;
-  const styles = layerStyle(layer);
+  const styles = layerStyle(layer, board);
   const class$ =
     layer.kind === "text"
       ? `${EDITOR_STYLES.shape} ${EDITOR_STYLES["text-layer"]}`
@@ -195,7 +200,7 @@ function shape(layer, linked, image) {
       onClick={() => select(id)}
       onPointerDown={(event) => {
         if (!linked) {
-          beginDrag(captured, event);
+          beginDrag(captured, board, event);
         }
       }}
       onPointerMove={moveDrag}
@@ -281,7 +286,7 @@ function layerPanel(scene, selected, disabled) {
         action={(data) => {
           const name = data.get("group-name");
           if (typeof name === "string") {
-            editHierarchy({ TAG: "CreateGroup", name: $trim(name) });
+            applyEdit({ TAG: "CreateGroup", name: $trim(name) });
           }
         }}
       >
@@ -319,7 +324,7 @@ function parentPicker(scene, id, disabled) {
         disabled={disabled}
         onChange={(event) => {
           const value = event.currentTarget.value;
-          editHierarchy({ TAG: "SetLayerParent", id, parentId: value || undefined });
+          applyEdit({ TAG: "SetLayerParent", id, parentId: value || undefined });
         }}
       >
         <option value="">Top level</option>
@@ -341,7 +346,7 @@ function groupInspector(group, disabled) {
         action={(data) => {
           const name = data.get("group-name");
           if (typeof name === "string") {
-            editHierarchy({ TAG: "RenameGroup", id: renameId, name: $trim(name) });
+            applyEdit({ TAG: "RenameGroup", id: renameId, name: $trim(name) });
           }
         }}
       >
@@ -358,11 +363,7 @@ function groupInspector(group, disabled) {
         </button>
       </form>
       <p>
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => editHierarchy({ TAG: "Ungroup", id })}
-        >
+        <button type="button" disabled={disabled} onClick={() => applyEdit({ TAG: "Ungroup", id })}>
           Ungroup
         </button>
       </p>
@@ -370,30 +371,36 @@ function groupInspector(group, disabled) {
   );
 }
 
-function numericField(field, layer, version) {
+function numericField(field, layer, version, board) {
   let name;
   let short;
   let previous;
+  let max;
   if (field === "X") {
     name = "x";
     short = "X";
     previous = layer.x;
+    max = board.width;
   } else if (field === "Y") {
     name = "y";
     short = "Y";
     previous = layer.y;
+    max = board.height;
   } else if (field === "Width") {
     name = "width";
     short = "W";
     previous = layer.width;
+    max = board.width;
   } else if (field === "Height") {
     name = "height";
     short = "H";
     previous = layer.height;
+    max = board.height;
   } else {
     name = "font size";
     short = "Px";
     previous = layer.fontSize ?? 20;
+    max = 96;
   }
   const id = layer.id;
   return (
@@ -411,7 +418,7 @@ function numericField(field, layer, version) {
             !Number.isFinite(value) ||
             value - Math.trunc(value) !== 0 ||
             value < 0 ||
-            value > BOARD_HEIGHT
+            value > max
           ) {
             status("Keep the entire shape inside the artboard.");
             input.value = String(previous);
@@ -443,9 +450,11 @@ function numericField(field, layer, version) {
   );
 }
 
-function inspector(layer, version, image) {
+function inspector(layer, version, image, board) {
   const id = layer.id;
-  const fields = ["X", "Y", "Width", "Height"].map((field) => numericField(field, layer, version));
+  const fields = ["X", "Y", "Width", "Height"].map((field) =>
+    numericField(field, layer, version, board),
+  );
   const textId = layer.id;
   const text =
     layer.text != null ? (
@@ -459,7 +468,7 @@ function inspector(layer, version, image) {
             onBlur={(event) => edit({ id: textId, text: event.currentTarget.value })}
           />
         </label>
-        {numericField("FontSize", layer, version)}
+        {numericField("FontSize", layer, version, board)}
       </>
     ) : undefined;
   return (
@@ -533,7 +542,72 @@ function instanceInspector(instance) {
   );
 }
 
-function componentPicker(disabled) {
+export function boardRatio(board) {
+  return board.width / board.height;
+}
+
+export function boardAspect(board) {
+  return `${board.width} / ${board.height}`;
+}
+
+function artboardSize(board, disabled) {
+  return (
+    <details className={EDITOR_STYLES["component-library"]}>
+      <summary>Artboard size</summary>
+      <form
+        key={`${board.width}-${board.height}`}
+        aria-label="Resize artboard"
+        action={(data) => {
+          const width = data.get("width");
+          const height = data.get("height");
+          if (typeof width === "string" && typeof height === "string") {
+            const parse = $parseInt(width, -2147483648, 2147483647);
+            const value = $parseInt(height, -2147483648, 2147483647);
+            if (parse.TAG === "Ok" && value.TAG === "Ok") {
+              const width = parse._0;
+              const height = value._0;
+              applyEdit({ TAG: "ResizeArtboard", width, height });
+            }
+          }
+        }}
+      >
+        <div className={EDITOR_STYLES["component-position"]}>
+          <label>
+            Width
+            <input
+              aria-label="Artboard width"
+              name="width"
+              type="number"
+              min={MIN_ARTBOARD_SIZE}
+              max={MAX_ARTBOARD_SIZE}
+              defaultValue={board.width}
+              disabled={disabled}
+              required
+            />
+          </label>
+          <label>
+            Height
+            <input
+              aria-label="Artboard height"
+              name="height"
+              type="number"
+              min={MIN_ARTBOARD_SIZE}
+              max={MAX_ARTBOARD_SIZE}
+              defaultValue={board.height}
+              disabled={disabled}
+              required
+            />
+          </label>
+        </div>
+        <button type="submit" disabled={disabled}>
+          Resize artboard
+        </button>
+      </form>
+    </details>
+  );
+}
+
+function componentPicker(disabled, board) {
   const options = Components.variants().map((variant) => (
     <option key={variant.id} value={variant.id}>{`${variant.family} · ${variant.name}`}</option>
   ));
@@ -573,7 +647,7 @@ function componentPicker(disabled) {
               name="x"
               type="number"
               min={0}
-              max={BOARD_WIDTH - 1}
+              max={(board.width - 1) | 0}
               defaultValue={40}
               required
             />
@@ -585,7 +659,7 @@ function componentPicker(disabled) {
               name="y"
               type="number"
               min={0}
-              max={BOARD_HEIGHT - 1}
+              max={(board.height - 1) | 0}
               defaultValue={40}
               required
             />
@@ -640,18 +714,19 @@ function journeyNavigation(editor, current, preview) {
 export function prototype(editor) {
   const screen = $unwrap(editor.screen, "Prototype screen");
   const scene = editor.document.scene;
+  const board = scene?.board ?? dimensionsDefault_default();
   const map = (scene) =>
-    scene.layers.map((layer) => previewLayer(layer, Scene$1.imageForLayer(scene, layer)));
+    scene.layers.map((layer) => previewLayer(layer, Scene$1.imageForLayer(scene, layer), board));
   const layers = scene != null ? map(scene) : undefined;
   const action = $unwrap(screen.action, "Prototype action");
   const source =
     scene != null ? scene.layers.find((layer) => layer.id === action.layerId) : undefined;
   function map$1(layer) {
     const placement = {
-      left: percent(layer.x, BOARD_WIDTH),
-      top: percent(layer.y, BOARD_HEIGHT),
-      width: percent(layer.width, BOARD_WIDTH),
-      height: percent(layer.height, BOARD_HEIGHT),
+      left: percent(layer.x, board.width),
+      top: percent(layer.y, board.height),
+      width: percent(layer.width, board.width),
+      height: percent(layer.height, board.height),
     };
     return (
       <a
@@ -667,6 +742,7 @@ export function prototype(editor) {
   const className$1 = SHELL.brand;
   const className$2 = JOURNEY["journey-preview"];
   const className$3 = JOURNEY["prototype-canvas"];
+  const style = { aspectRatio: boardAspect(board) };
   const className$4 = `${ARTBOARD.artboard} ${ARTBOARD.mockup}`;
   const className$5 = JOURNEY["prototype-guide"];
   const children = journeyNavigation(editor, screen, true);
@@ -681,7 +757,7 @@ export function prototype(editor) {
       <main className={className$2}>
         <section className={className$3} aria-label="Prototype artboard">
           <h1>{screen.title}</h1>
-          <div id="art" className={className$4}>
+          <div id="art" style={style} className={className$4}>
             <div aria-hidden="true">{layers}</div>
             {hotspot}
           </div>
@@ -709,11 +785,13 @@ export function editor(editor) {
   const layers = editor.document.scene != null ? editor.document.scene.layers : [];
   const selected = editor.selected;
   const scene = editor.document.scene;
+  const board = scene?.board ?? dimensionsDefault_default();
   const shapeList = layers.map((layer) =>
     shape(
       layer,
       (scene != null ? Scene$1.instanceForLayer(scene, layer.id) : undefined) != null,
       scene != null ? Scene$1.imageForLayer(scene, layer) : undefined,
+      board,
     ),
   );
   const disabled = editor.busy || editor.recovery != null || scene == null;
@@ -734,6 +812,7 @@ export function editor(editor) {
       selectedLayer,
       editor.fieldsVersion,
       scene != null ? Scene$1.imageForLayer(scene, selectedLayer) : undefined,
+      board,
     );
   } else {
     properties = undefined;
@@ -749,7 +828,11 @@ export function editor(editor) {
   const screen = editor.screen;
   const poster = editor.poster;
   const scale = editor.zoom / 100;
-  const sheetStyle = { width: `calc(var(--fit-width) * ${$displayF64(scale)})` };
+  const ratio = boardRatio(board);
+  const width = board.width;
+  const sheetStyle = {
+    width: `calc(min(var(--available-width), ${width}px, calc(var(--fit-height) * ${$displayF64(ratio)})) * ${$displayF64(scale)})`,
+  };
   const zoomLabel = `${$toFixed(editor.zoom, 0)}%`;
   const className = EDITOR_STYLES.editor;
   const className$1 = SHELL.header;
@@ -768,6 +851,7 @@ export function editor(editor) {
   const className$8 = CANVAS["canvas-stage"];
   const className$9 = EDITOR_STYLES.legend;
   const value$1 = screen?.title ?? "ARTBOARD 01";
+  const style = { aspectRatio: boardAspect(board) };
   const value$2 = poster ? ARTBOARD.artboard : `${ARTBOARD.artboard} ${ARTBOARD.mockup}`;
   const className$10 = poster ? EDITOR_STYLES.imprint : undefined;
   const className$11 = EDITOR_STYLES.shapes;
@@ -781,6 +865,7 @@ export function editor(editor) {
   );
   const className$12 = CANVAS["canvas-toolbar"];
   const className$13 = EDITOR_STYLES.tools;
+  const captured = board.width;
   const className$14 = CANVAS["zoom-tools"];
   const disabled$1 = editor.zoom <= Zoom.MIN;
   const className$15 = CANVAS["zoom-value"];
@@ -788,14 +873,15 @@ export function editor(editor) {
   const disabled$2 = editor.zoom >= Zoom.MAX;
   const className$16 = EDITOR_STYLES.properties;
   const className$17 = EDITOR_STYLES.eyebrow;
-  const value$3 = componentPicker(disabled);
+  const value$3 = componentPicker(disabled, board);
+  const value$4 = artboardSize(board, disabled);
   const entry = editor.history.undo.at(-1);
   const condition = entry != null;
   const children$2 = condition
     ? `${entry.label} · ${entry.author === "Agent" ? "Agent" : "You"}`
     : undefined;
   const href = editor.recovery != null ? Project.href(editor.recovery) : undefined;
-  const value$4 = Drafts.hasPrevious(Editor.storageKey(editor)) && !editor.busy;
+  const value$5 = Drafts.hasPrevious(Editor.storageKey(editor)) && !editor.busy;
   const className$18 = EDITOR_STYLES.agent;
   const children$3 = editor.saveFailed && editor.recovery == null && (
     <>
@@ -849,7 +935,7 @@ export function editor(editor) {
         <aside aria-label="Layers panel">
           <div className={className$5}>DOCUMENT</div>
           <h2>{documentTitle}</h2>
-          <p>{!poster ? "Mobile artboard" : "Poster composition"}</p>
+          <p>{poster ? "Poster composition" : "Artboard"}</p>
           {value}
           <hr />
           <h3>Layers</h3>
@@ -861,9 +947,9 @@ export function editor(editor) {
               <div style={sheetStyle}>
                 <div className={className$9}>
                   {value$1}
-                  <span>{`${BOARD_WIDTH} × ${BOARD_HEIGHT}`}</span>
+                  <span>{`${board.width} × ${board.height}`}</span>
                 </div>
-                <div id="art" className={value$2}>
+                <div id="art" style={style} className={value$2}>
                   {poster && (
                     <div className={className$10}>
                       FORM STUDIES<span>SERIES 01 / 03</span>
@@ -913,7 +999,7 @@ export function editor(editor) {
                     kind: "text",
                     text: "Label",
                     fontSize: 20,
-                    width: 170,
+                    width: Math.min(170, captured),
                     height: 32,
                     fill: "#20231f",
                   })
@@ -972,6 +1058,7 @@ export function editor(editor) {
             </label>
           </p>
           {value$3}
+          {value$4}
           {properties}
           {parentControl}
           {condition && <p aria-label="Last edit">{children$2}</p>}
@@ -980,7 +1067,7 @@ export function editor(editor) {
               <a href={href}>Open recovery project</a>
             </p>
           )}
-          {value$4 && (
+          {value$5 && (
             <button
               type="button"
               onClick={() => {

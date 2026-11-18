@@ -104,6 +104,9 @@ const BATCH_SCHEMA = `{
             {"type":"object","required":["op","id"],"additionalProperties":false,"properties":{
                 "op":{"const":"delete"},"id":{"type":"string"}
             }},
+            {"type":"object","required":["op","width","height"],"additionalProperties":false,"properties":{
+                "op":{"const":"resize_artboard"},"width":{"type":"integer","minimum":64,"maximum":8192},"height":{"type":"integer","minimum":64,"maximum":8192}
+            }},
             {"type":"object","required":["op","name"],"additionalProperties":false,"properties":{
                 "op":{"const":"create_group"},"name":{"type":"string","minLength":1,"maxLength":80},"parentId":{"type":["string","null"]}
             }},
@@ -213,7 +216,7 @@ export async function registerEditorTools() {
     {
       name: "apply_edits",
       description:
-        "Apply up to 100 layer patches, image placements, hierarchy changes or deletions atomically at the expected design revision. The batch is one undo step.",
+        "Apply up to 100 layer patches, image placements, artboard resizes, hierarchy changes or deletions atomically at the expected design revision. The batch is one undo step.",
       inputSchema: parse(BATCH_SCHEMA),
       async execute(input) {
         const value = decode(

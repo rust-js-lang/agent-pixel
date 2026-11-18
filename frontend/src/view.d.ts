@@ -2,6 +2,11 @@
 
 import type { JSX } from "react";
 import type { ImageAsset } from "../../core/src/assets.js";
+import type { Dimensions } from "../../core/src/lib.js";
 import type { Layer } from "../../core/src/scene.js";
 
-export function previewLayer(layer: Layer, image?: ImageAsset | null | undefined): JSX.Element;
+export function previewLayer(layer: Layer, image: ImageAsset | null | undefined, board: Dimensions): JSX.Element;
+
+export function boardRatio(board: Dimensions): number;
+
+export function boardAspect(board: Dimensions): string;

@@ -94,6 +94,12 @@ The dashboard, editor, canvas, shared artboard, journey prototype, and page shel
 
 Open **Project backup** on the dashboard to download a versioned JSON bundle or restore one as a new project. On the dashboard, agents can call `export_project` with `{ id }` and `import_project` with `{ bundle }`. Each bundle contains the saved browser artboards, prototype links, and a snapshot of the component library. Restored instances resolve against that snapshot so they keep their appearance in a fresh browser.
 
+## Artboard dimensions
+
+Open **Artboard size** in the inspector to set the width and height in artboard pixels. Each dimension can be 64–8192 px. Layers keep their coordinates when the artboard changes size. Move or resize any layers outside the proposed bounds before shrinking.
+
+Use `{ op: "resize_artboard", width, height }` in `apply_edits` to resize alongside other edits. Read the current size from `read_design.board`. Dimensions are saved with each screen and follow it into backups and prototypes. Older projects retain the default 480 × 600 px.
+
 ## Canvas and layer hierarchy
 
 The canvas scrolls within the editor. The toolbar and side panels stay in place, and long panels scroll independently. On phones the Layers panel and inspector sit above and below the canvas.

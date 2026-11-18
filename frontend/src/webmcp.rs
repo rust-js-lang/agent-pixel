@@ -97,6 +97,9 @@ const BATCH_SCHEMA: &str = r#"{
             {"type":"object","required":["op","id"],"additionalProperties":false,"properties":{
                 "op":{"const":"delete"},"id":{"type":"string"}
             }},
+            {"type":"object","required":["op","width","height"],"additionalProperties":false,"properties":{
+                "op":{"const":"resize_artboard"},"width":{"type":"integer","minimum":64,"maximum":8192},"height":{"type":"integer","minimum":64,"maximum":8192}
+            }},
             {"type":"object","required":["op","name"],"additionalProperties":false,"properties":{
                 "op":{"const":"create_group"},"name":{"type":"string","minLength":1,"maxLength":80},"parentId":{"type":["string","null"]}
             }},
@@ -186,7 +189,7 @@ pub async fn register_editor_tools() -> Result<bool, &'static JsError> {
         history_tool("redo_edit", "Redo the next transaction in this editor session.", "redo"),
         Tool {
             name: "apply_edits",
-            description: "Apply up to 100 layer patches, image placements, hierarchy changes or deletions atomically at the expected design revision. The batch is one undo step.",
+            description: "Apply up to 100 layer patches, image placements, artboard resizes, hierarchy changes or deletions atomically at the expected design revision. The batch is one undo step.",
             annotations: None,
             input_schema: parse(BATCH_SCHEMA),
             execute: Box::new(|input| js::promise(async move {

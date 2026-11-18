@@ -4,4 +4,26 @@ export const BOARD_WIDTH: number;
 
 export const BOARD_HEIGHT: number;
 
+export const MIN_ARTBOARD_SIZE: number;
+
+export const MAX_ARTBOARD_SIZE: number;
+
+export interface Dimensions {
+    width: number;
+    height: number;
+}
+
+export const Dimensions: {
+    readonly LARGEST: Dimensions;
+    isDefault(dimensions: Dimensions): boolean;
+    validate(dimensions: Dimensions): {
+        TAG: "Ok";
+        _0?: undefined;
+    } | {
+        TAG: "Err";
+        _0: string;
+    };
+    fits(dimensions: Dimensions, x: number, y: number, width: number, height: number): boolean;
+};
+
 export function fitsBoard(x: number, y: number, width: number, height: number): boolean;

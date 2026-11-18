@@ -10,7 +10,7 @@ import * as Bundle from "../../core/src/bundle.js";
 import { Scene } from "../../core/src/scene.js";
 import * as Backup from "./backup.js";
 import { message as message$1 } from "./lib.js";
-import { $settle } from "@rust-js/std";
+import { $displayF64, $settle } from "@rust-js/std";
 
 function projectCard(project) {
   const poster = Project.isPoster(project);
@@ -39,8 +39,13 @@ function projectCard(project) {
       break;
   }
   const preview = scene.layers.map((layer) =>
-    View.previewLayer(layer, Scene.imageForLayer(scene, layer)),
+    View.previewLayer(layer, Scene.imageForLayer(scene, layer), scene.board),
   );
+  const ratio = View.boardRatio(scene.board);
+  const style = {
+    aspectRatio: View.boardAspect(scene.board),
+    width: `min(113px, calc(141.25px * ${$displayF64(ratio)}))`,
+  };
   return (
     <a key={project.id} className={DASHBOARD["project-card"]} href={Project.href(project)}>
       <div
@@ -52,6 +57,7 @@ function projectCard(project) {
         aria-hidden="true"
       >
         <div
+          style={style}
           className={
             poster
               ? `${DASHBOARD["project-preview"]} ${DASHBOARD["orbit-preview"]}`

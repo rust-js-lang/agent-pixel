@@ -3,7 +3,7 @@
   container-type: inline-size;
 }
 .canvas-stage {
-  --fit-width: min(calc(100cqw - 48px), 480px, 65vh);
+  --available-width: max(1px, calc(100cqw - 48px)); --fit-height: 81.25dvh;
   min-width: 100%; min-height: 100%; width: max-content;
   display: grid; place-items: center; padding: 24px;
 }
@@ -15,5 +15,5 @@
 .zoom-tools .zoom-value { width: 51px; font-variant-numeric: tabular-nums; font-size: 12px; }
 
 @media (max-width: 760px) {
-  .canvas-stage { --fit-width: min(calc(100cqw - 24px), 480px, 48vh); padding: 12px; }
+  .canvas-stage { --available-width: max(1px, calc(100cqw - 24px)); --fit-height: 60dvh; padding: 12px; }
 }

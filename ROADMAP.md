@@ -4,7 +4,7 @@
 
 **Agent Pixel is ready for prototyping and evaluation. Use a separate system of record for production designs today.** The editor can create and persist browser drafts, edit shapes and text, place linked Canopy UI variants, and let a person and a WebMCP agent work on the same artboard. The reminder demo shows a clickable journey and a developer handoff. It uses predefined screens and interactions.
 
-The release blockers are recoverable project storage, dependable editing of real multi-screen files, reusable components authored by designers, and a handoff another person can open and inspect. The native Rust service stores a single document over loopback. It demonstrates revision checks and atomic replacement, while the dashboard's project catalog and drafts live in browser storage. The scene is a flat, ordered layer list with a fixed 480 × 600 artboard and a 1,000-layer limit per scene. Canopy is the built-in component library.
+The release blockers are recoverable project storage, dependable editing of real multi-screen files, reusable components authored by designers, and a handoff another person can open and inspect. The native Rust service stores a single document over loopback. It demonstrates revision checks and atomic replacement, while the dashboard's project catalog and drafts live in browser storage. The scene supports nested layer groups and resizable artboards with a 1,000-layer limit per scene. Canopy is the built-in component library.
 
 ### M1 checkpoint
 
@@ -34,7 +34,7 @@ Ship this first so larger designs are safe to edit.
 
 ## M2 · Design a feature from scratch
 
-Build the editing primitives in this order so frames, constraints, and component instances share the same document model. The editor now keeps canvas scrolling inside the workspace. The Layers panel supports persistent nested groups and linked component children, with the same hierarchy edits available through WebMCP. Named screens, independently sized frames, and the other editing primitives remain ahead.
+Build the editing primitives in this order so frames, constraints, and component instances share the same document model. The editor now keeps canvas scrolling inside the workspace. The Layers panel supports persistent nested groups and linked component children, with the same hierarchy edits available through WebMCP. The active artboard can be resized from 64 to 8192 pixels per dimension. People and agents can resize it as a reversible edit, and its dimensions persist in drafts and portable bundles. Authoring named screens, nested frames, and the other editing primitives remain ahead.
 
 1. **Screens and layers.** Create, name, duplicate, reorder, and delete pages and frames of arbitrary supported sizes. Add nested frames, multi-select, groups, layer order, visibility, locks, clipping, and copy/paste. Give each screen a stable route.
 2. **Precision editing.** Add resize handles, alignment, distribution, snapping, and keyboard nudge. Support fill, stroke, corner radius, opacity, basic vector paths, and image placement. Add usable type controls for family, weight, line height, alignment, and wrapping. Define how missing fonts are reported and rendered.

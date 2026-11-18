@@ -3,7 +3,7 @@ use crate::{
     projects::{self, Project},
     view,
 };
-use react::{JSX, jsx, use_state};
+use react::{CSSProperties, JSX, jsx, use_state};
 use webapi::{FormDataEntryValue, window_global};
 
 fn project_card(project: &Project) -> JSX::Element {
@@ -31,12 +31,16 @@ fn project_card(project: &Project) -> JSX::Element {
     let preview = scene
         .layers
         .iter()
-        .map(|layer| view::preview_layer(layer, scene.image_for_layer(layer)))
+        .map(|layer| view::preview_layer(layer, scene.image_for_layer(layer), scene.board))
         .collect::<Vec<_>>();
+    let ratio = view::board_ratio(scene.board);
+    let style = CSSProperties::new()
+        .aspect_ratio(view::board_aspect(scene.board))
+        .width(format!("min(113px, calc(141.25px * {ratio}))"));
     jsx! {
         <a key={project.id.clone()} className={DASHBOARD.project_card()} href={project.href()}>
             <div className={if poster { format!("{} {}", DASHBOARD.project_tile(), DASHBOARD.orbit_tile()) } else { DASHBOARD.project_tile() }} aria-hidden="true">
-                <div className={if poster { format!("{} {}", DASHBOARD.project_preview(), DASHBOARD.orbit_preview()) } else { DASHBOARD.project_preview() }}>
+                <div style={style} className={if poster { format!("{} {}", DASHBOARD.project_preview(), DASHBOARD.orbit_preview()) } else { DASHBOARD.project_preview() }}>
                     {preview}
                     {poster.then(|| jsx! { <b className={DASHBOARD.preview_caption()}>"Orbit study."</b> })}
                     {(count == 0).then(|| jsx! { <span className={DASHBOARD.empty_preview()}>"＋"</span> })}

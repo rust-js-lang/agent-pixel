@@ -13,7 +13,12 @@ import {
   layerGroupDeserialize_deserialize,
   layerGroupSerialize_serialize,
 } from "./hierarchy.js";
-import { BOARD_HEIGHT, BOARD_WIDTH, fitsBoard } from "./lib.js";
+import {
+  Dimensions,
+  dimensionsDefault_default,
+  dimensionsDeserialize_deserialize,
+  dimensionsSerialize_serialize,
+} from "./lib.js";
 import {
   $add,
   $assign,
@@ -110,13 +115,15 @@ export function sceneDeserialize_deserialize(json) {
     "struct Scene",
     [
       ["version", $json.u8],
+      ["board", dimensionsDeserialize_deserialize, () => dimensionsDefault_default()],
       ["layers", $json.vec(layerDeserialize_deserialize)],
       ["instances", $json.vec(componentInstanceDeserialize_deserialize), () => []],
       ["assets", $json.vec(imageAssetDeserialize_deserialize), () => []],
       ["groups", $json.vec(layerGroupDeserialize_deserialize), () => []],
     ],
-    ([version, layers, instances, assets, groups]) => ({
+    ([version, board, layers, instances, assets, groups]) => ({
       version,
+      board,
       layers,
       instances,
       assets,
@@ -126,9 +133,14 @@ export function sceneDeserialize_deserialize(json) {
 }
 
 export function sceneSerialize_serialize(scene, json) {
+  Dimensions.isDefault(scene.board);
   json.beginObject();
   json.key("version");
   json.int(scene.version);
+  if (!Dimensions.isDefault(scene.board)) {
+    json.key("board");
+    dimensionsSerialize_serialize(scene.board, json);
+  }
   json.key("layers");
   json.beginArray();
   for (const item of scene.layers) {
@@ -396,16 +408,16 @@ export function componentSwitchSerialize_serialize(componentSwitch, json) {
   json.endObject();
 }
 
-function placedLayers(variant, id, x, y, fit) {
+function placedLayers(variant, id, x, y, fit, board) {
+  const maxSource = { width: 8192, height: 8192 };
   if (variant.layers.length === 0) {
     return { TAG: "Err", _0: "Cannot insert an empty component." };
   }
-  let left = BOARD_WIDTH;
-  let top = BOARD_HEIGHT;
+  let { width: left, height: top } = maxSource;
   let right = 0;
   let bottom = 0;
   for (const layer of variant.layers) {
-    const result = Layer.validate(layer);
+    const result = Layer.validate(layer, maxSource);
     if (result.TAG === "Err") {
       return result;
     }
@@ -416,14 +428,17 @@ function placedLayers(variant, id, x, y, fit) {
   }
   const width = (right - left) | 0;
   const height = (bottom - top) | 0;
+  if (width > board.width || height > board.height) {
+    return { TAG: "Err", _0: "The component is larger than this artboard." };
+  }
   let y$1;
   if (fit) {
-    x = $clamp(x, 0, (BOARD_WIDTH - width) | 0);
-    y$1 = $clamp(y, 0, (BOARD_HEIGHT - height) | 0);
+    x = $clamp(x, 0, (board.width - width) | 0);
+    y$1 = $clamp(y, 0, (board.height - height) | 0);
   } else {
     y$1 = y;
   }
-  if (!fitsBoard(x, y$1, width, height)) {
+  if (!Dimensions.fits(board, x, y$1, width, height)) {
     return { TAG: "Err", _0: "Keep the entire component inside the artboard." };
   }
   return {
@@ -470,7 +485,7 @@ export const Layer = {
     };
   },
 
-  validate(layer) {
+  validate(layer, board) {
     if (
       layer.kind === "ellipse" ||
       layer.kind === "rectangle" ||
@@ -502,7 +517,7 @@ export const Layer = {
         } else if (layer.text != null || layer.fontSize != null) {
           return { TAG: "Err", _0: "Text properties require a text layer." };
         }
-        if (!fitsBoard(layer.x, layer.y, layer.width, layer.height)) {
+        if (!Dimensions.fits(board, layer.x, layer.y, layer.width, layer.height)) {
           return { TAG: "Err", _0: "Keep the entire shape inside the artboard." };
         }
         if (!validId(layer.id)) {
@@ -519,6 +534,7 @@ export const Scene = {
   blank() {
     return {
       version: VERSION,
+      board: dimensionsDefault_default(),
       layers: [],
       instances: [],
       assets: [],
@@ -529,6 +545,7 @@ export const Scene = {
   poster() {
     return {
       version: VERSION,
+      board: dimensionsDefault_default(),
       layers: [
         Layer.orbit("outer-disc", 44, 68, 392, INK),
         Layer.orbit("orange-disc", 64, 88, 352, ORANGE),
@@ -548,6 +565,10 @@ export const Scene = {
     if (scene.version !== VERSION || scene.layers.length + scene.groups.length > MAX_LAYERS) {
       return { TAG: "Err", _0: "Unsupported document." };
     }
+    const result = Dimensions.validate(scene.board);
+    if (result.TAG === "Err") {
+      return result;
+    }
     const assets = new Set();
     let bytes = 0;
     for (const asset of scene.assets) {
@@ -565,7 +586,7 @@ export const Scene = {
     }
     const ids = new Set();
     for (const layer of scene.layers) {
-      const result = Layer.validate(layer);
+      const result = Layer.validate(layer, scene.board);
       if (result.TAG === "Err") {
         return result;
       }
@@ -617,6 +638,22 @@ export const Scene = {
     return { TAG: "Ok" };
   },
 
+  resize(scene, board) {
+    const result = Dimensions.validate(board);
+    if (result.TAG === "Err") {
+      return result;
+    }
+    if (
+      scene.layers.some(
+        (layer) => !Dimensions.fits(board, layer.x, layer.y, layer.width, layer.height),
+      )
+    ) {
+      return { TAG: "Err", _0: "Move or resize layers outside the new artboard bounds first." };
+    }
+    scene.board = board;
+    return { TAG: "Ok" };
+  },
+
   placeImage(scene, placement, id) {
     if (scene.layers.length + scene.groups.length >= MAX_LAYERS) {
       return { TAG: "Err", _0: "Layer limit reached." };
@@ -636,7 +673,7 @@ export const Scene = {
       fill: "#ffffff",
       imageId: existing != null ? existing.id : id,
     };
-    const result$1 = Layer.validate(layer);
+    const result$1 = Layer.validate(layer, scene.board);
     if (result$1.TAG === "Err") {
       return result$1;
     }
@@ -661,7 +698,7 @@ export const Scene = {
   },
 
   insertComponent(scene, insert, id) {
-    const result = placedLayers(insert.variant, id, insert.x, insert.y, false);
+    const result = placedLayers(insert.variant, id, insert.x, insert.y, false, scene.board);
     if (result.TAG === "Err") {
       return result;
     }
@@ -703,7 +740,7 @@ export const Scene = {
     if (instance.family !== variant.family) {
       return { TAG: "Err", _0: "Choose a variant from the same component family." };
     }
-    const result = placedLayers(variant, instance.id, instance.x, instance.y, fit);
+    const result = placedLayers(variant, instance.id, instance.x, instance.y, fit, scene.board);
     if (result.TAG === "Err") {
       return result;
     }
@@ -853,6 +890,8 @@ export const Scene = {
     } else {
       index = undefined;
     }
+    const defaultWidth = width ?? Math.min(scene.board.width, 80);
+    const defaultHeight = height ?? Math.min(scene.board.height, 80);
     let layer;
     if (index !== undefined) {
       const value = $index(scene.layers, index);
@@ -861,10 +900,22 @@ export const Scene = {
       layer = {
         id: newId,
         kind: "rectangle",
-        x: 40,
-        y: 40,
-        width: 80,
-        height: 80,
+        x: Math.min(
+          40,
+          Math.max(
+            Math.min(Math.max(scene.board.width - defaultWidth, -2147483648), 2147483647),
+            0,
+          ),
+        ),
+        y: Math.min(
+          40,
+          Math.max(
+            Math.min(Math.max(scene.board.height - defaultHeight, -2147483648), 2147483647),
+            0,
+          ),
+        ),
+        width: defaultWidth,
+        height: defaultHeight,
         fill: ORANGE,
       };
     }
@@ -892,7 +943,7 @@ export const Scene = {
     if (fontSize != null) {
       layer.fontSize = fontSize;
     }
-    const result = Layer.validate(layer);
+    const result = Layer.validate(layer, scene.board);
     if (result.TAG === "Err") {
       return result;
     }
@@ -1008,6 +1059,7 @@ export function editDeserialize_deserialize(json) {
     [
       "patch",
       "delete",
+      "resize_artboard",
       "place_image",
       "create_group",
       "set_layer_parent",
@@ -1028,6 +1080,17 @@ export function editDeserialize_deserialize(json) {
           "struct variant Edit::Delete",
           [["id", $json.string]],
           ([id]) => ({ TAG: "Delete", id }),
+          { deny: true },
+        );
+      }
+      if (variant === "resize_artboard") {
+        return content.struct(
+          "struct variant Edit::ResizeArtboard",
+          [
+            ["width", $json.i32],
+            ["height", $json.i32],
+          ],
+          ([width, height]) => ({ TAG: "ResizeArtboard", width, height }),
           { deny: true },
         );
       }
@@ -1096,6 +1159,15 @@ export function editSerialize_serialize(edit, json) {
     json.string("delete");
     json.key("id");
     json.string(edit.id);
+    json.endObject();
+  } else if (edit.TAG === "ResizeArtboard") {
+    json.beginObject();
+    json.key("op");
+    json.string("resize_artboard");
+    json.key("width");
+    json.int(edit.width);
+    json.key("height");
+    json.int(edit.height);
     json.endObject();
   } else if (edit.TAG === "PlaceImage") {
     json.beginObject();
@@ -1194,26 +1266,6 @@ export function designDeserialize_deserialize(json) {
       edited,
       inserted,
     }),
-  );
-}
-
-export function dimensionsSerialize_serialize(dimensions, json) {
-  json.beginObject();
-  json.key("width");
-  json.int(dimensions.width);
-  json.key("height");
-  json.int(dimensions.height);
-  json.endObject();
-}
-
-export function dimensionsDeserialize_deserialize(json) {
-  return json.struct(
-    "struct Dimensions",
-    [
-      ["width", $json.i32],
-      ["height", $json.i32],
-    ],
-    ([width, height]) => ({ width, height }),
   );
 }
 
@@ -1338,6 +1390,12 @@ export const Session = {
             return result;
           }
           selected = result._0;
+        } else if (edit.TAG === "ResizeArtboard") {
+          const result = Scene.resize(candidate, { width: edit.width, height: edit.height });
+          if (result.TAG === "Err") {
+            return result;
+          }
+          selected = undefined;
         } else if (edit.TAG === "PlaceImage") {
           const result = Scene.placeImage(candidate, edit.placement, `${id}-${index}`);
           if (result.TAG === "Err") {
@@ -1593,14 +1651,12 @@ export const Session = {
       ...item,
       children: item.children.slice(),
     }));
+    const board = session.scene.board;
     const value = session.revision;
     const collect = session.undo.map((entry) => entry.entry);
     const design = {
       scene: { ...props, layers, instances, assets, groups },
-      board: {
-        width: BOARD_WIDTH,
-        height: BOARD_HEIGHT,
-      },
+      board,
       revision: value,
       history: {
         undo: collect,

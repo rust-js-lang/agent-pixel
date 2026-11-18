@@ -38,7 +38,7 @@ import {
 import { MAX_SCENE_IMAGE_BYTES, RasterImage } from "../../core/src/assets.js";
 import { validTitle } from "../../core/src/bundle.js";
 import { Scene as Scene$1 } from "../../core/src/hierarchy.js";
-import { BOARD_HEIGHT, BOARD_WIDTH, fitsBoard } from "../../core/src/lib.js";
+import { Dimensions } from "../../core/src/lib.js";
 import {
   Batch,
   Scene as Scene$2,
@@ -252,10 +252,11 @@ const Session = {
       ...item,
       children: item.children.slice(),
     }));
+    const board = session.scene.board;
     const value = session.revision;
     const collect = $foldToArray(iterator_map($iter(session.undo), (entry) => entry.entry));
     const design = {
-      board: { width: BOARD_WIDTH, height: BOARD_HEIGHT },
+      board,
       scene: { ...props, layers, instances, assets, groups },
       revision: value,
       history: {
@@ -350,21 +351,30 @@ const Session = {
           const index = value[0];
           const edit = value[1];
           let tmp;
-          bb78: {
+          bb83: {
             if (edit.TAG === "Patch") {
               const layer = edit.layer;
               const value = Scene$2.edit(candidate, layer, `${id}-${index}`);
               if (value.TAG !== "Err") {
                 tmp = value._0;
-                break bb78;
+                break bb83;
               }
               result = value;
+            } else if (edit.TAG === "ResizeArtboard") {
+              const { width, height } = edit;
+              const result$1 = Scene.resize(candidate, { width, height });
+              if (result$1.TAG === "Err") {
+                result = result$1;
+              } else {
+                tmp = undefined;
+                break bb83;
+              }
             } else if (edit.TAG === "PlaceImage") {
               const placement = edit.placement;
               const placeImage = Scene.placeImage(candidate, placement, `${id}-${index}`);
               if (placeImage.TAG !== "Err") {
                 tmp = placeImage._0;
-                break bb78;
+                break bb83;
               }
               result = placeImage;
             } else if (edit.TAG === "CreateGroup") {
@@ -372,7 +382,7 @@ const Session = {
               const result$1 = Scene.createGroup(candidate, `${id}-${index}`, name, parentId);
               if (result$1.TAG !== "Err") {
                 tmp = result$1._0;
-                break bb78;
+                break bb83;
               }
               result = result$1;
             } else if (edit.TAG === "SetLayerParent") {
@@ -382,7 +392,7 @@ const Session = {
                 result = result$1;
               } else {
                 tmp = id;
-                break bb78;
+                break bb83;
               }
             } else if (edit.TAG === "RenameGroup") {
               const { id, name } = edit;
@@ -391,7 +401,7 @@ const Session = {
                 result = result$1;
               } else {
                 tmp = id;
-                break bb78;
+                break bb83;
               }
             } else if (edit.TAG === "Ungroup") {
               const id = edit.id;
@@ -400,7 +410,7 @@ const Session = {
                 result = result$1;
               } else {
                 tmp = undefined;
-                break bb78;
+                break bb83;
               }
             } else {
               const id = edit.id;
@@ -409,7 +419,7 @@ const Session = {
                 result = result$1;
               } else {
                 tmp = undefined;
-                break bb78;
+                break bb83;
               }
             }
             break;
@@ -456,7 +466,7 @@ const Scene = {
     }
   },
   insertComponent(scene, insert, id) {
-    const result = placedLayers(insert.variant, id, insert.x, insert.y, false);
+    const result = placedLayers(insert.variant, id, insert.x, insert.y, false, scene.board);
     if (result.TAG === "Err") {
       return result;
     }
@@ -521,6 +531,21 @@ const Scene = {
     $assign(scene, candidate);
     return { TAG: "Ok", _0: selected };
   },
+  resize(scene, board) {
+    const result = Dimensions.validate(board);
+    if (result.TAG === "Err") {
+      return result;
+    }
+    if (
+      scene.layers.some(
+        (layer) => !Dimensions.fits(board, layer.x, layer.y, layer.width, layer.height),
+      )
+    ) {
+      return { TAG: "Err", _0: "Move or resize layers outside the new artboard bounds first." };
+    }
+    scene.board = board;
+    return { TAG: "Ok" };
+  },
   placeImage(scene, placement, id) {
     let tmp = true;
     let result;
@@ -540,7 +565,7 @@ const Scene = {
           fill: "#ffffff",
           imageId: existing != null ? existing.id : id,
         };
-        const result$1 = Layer.validate(layer);
+        const result$1 = Layer.validate(layer, scene.board);
         bb33: {
           if (result$1.TAG !== "Err") {
             if (existing == null) {
@@ -683,7 +708,7 @@ const Scene = {
     if (instance.family !== variant.family) {
       return { TAG: "Err", _0: "Choose a variant from the same component family." };
     }
-    const result = placedLayers(variant, instance.id, instance.x, instance.y, fit);
+    const result = placedLayers(variant, instance.id, instance.x, instance.y, fit, scene.board);
     if (result.TAG === "Err") {
       return result;
     }
@@ -722,7 +747,7 @@ const Scene = {
 };
 
 const Layer = {
-  validate(layer) {
+  validate(layer, board) {
     if (
       layer.kind === "ellipse" ||
       layer.kind === "rectangle" ||
@@ -753,7 +778,7 @@ const Layer = {
             return { TAG: "Err", _0: "Text properties require a text layer." };
           }
         }
-        if (!fitsBoard(layer.x, layer.y, layer.width, layer.height)) {
+        if (!Dimensions.fits(board, layer.x, layer.y, layer.width, layer.height)) {
           return { TAG: "Err", _0: "Keep the entire shape inside the artboard." };
         }
         if (!validId(layer.id)) {
@@ -938,16 +963,16 @@ function paintOrder(rows, order, index) {
   }
 }
 
-function placedLayers(variant, id, x, y, fit) {
+function placedLayers(variant, id, x, y, fit, board) {
+  const maxSource = Dimensions.LARGEST;
   if (variant.layers.length === 0) {
     return { TAG: "Err", _0: "Cannot insert an empty component." };
   }
-  let left = BOARD_WIDTH;
-  let top = BOARD_HEIGHT;
+  let { width: left, height: top } = maxSource;
   let right = 0;
   let bottom = 0;
   for (const layer of variant.layers) {
-    const result = Layer.validate(layer);
+    const result = Layer.validate(layer, maxSource);
     if (result.TAG === "Err") {
       return result;
     }
@@ -958,32 +983,39 @@ function placedLayers(variant, id, x, y, fit) {
   }
   const width = (right - left) | 0;
   const height = (bottom - top) | 0;
-  let y$1;
-  if (fit) {
-    x = $clamp(x, 0, (BOARD_WIDTH - width) | 0);
-    y$1 = $clamp(y, 0, (BOARD_HEIGHT - height) | 0);
-  } else {
-    y$1 = y;
+  if (!(width > board.width)) {
+    if (height <= board.height) {
+      let x$1;
+      let y$1;
+      if (fit) {
+        x$1 = $clamp(x, 0, (board.width - width) | 0);
+        y$1 = $clamp(y, 0, (board.height - height) | 0);
+      } else {
+        x$1 = x;
+        y$1 = y;
+      }
+      if (!Dimensions.fits(board, x$1, y$1, width, height)) {
+        return { TAG: "Err", _0: "Keep the entire component inside the artboard." };
+      }
+      return {
+        TAG: "Ok",
+        _0: $foldToArray(
+          iterator_map(
+            iterator_enumerate($iter(variant.layers)),
+            ([index, layer]) => {
+              layer = { ...layer };
+              layer.id = `${id}-${index}`;
+              layer.x = (x$1 + ((layer.x - left) | 0)) | 0;
+              layer.y = (y$1 + ((layer.y - top) | 0)) | 0;
+              return layer;
+            },
+            { next: $next, fold: $foldOf, getUnchecked: enumerateIterator___iteratorGetUnchecked },
+          ),
+        ),
+      };
+    }
   }
-  if (!fitsBoard(x, y$1, width, height)) {
-    return { TAG: "Err", _0: "Keep the entire component inside the artboard." };
-  }
-  return {
-    TAG: "Ok",
-    _0: $foldToArray(
-      iterator_map(
-        iterator_enumerate($iter(variant.layers)),
-        ([index, layer]) => {
-          layer = { ...layer };
-          layer.id = `${id}-${index}`;
-          layer.x = (x + ((layer.x - left) | 0)) | 0;
-          layer.y = (y$1 + ((layer.y - top) | 0)) | 0;
-          return layer;
-        },
-        { next: $next, fold: $foldOf, getUnchecked: enumerateIterator___iteratorGetUnchecked },
-      ),
-    ),
-  };
+  return { TAG: "Err", _0: "The component is larger than this artboard." };
 }
 
 function validId(id) {

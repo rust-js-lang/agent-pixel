@@ -10,6 +10,7 @@ import {
   Scene,
   layerNodeSerialize_serialize,
 } from "../../core/src/hierarchy.js";
+import { dimensionsDefault_default } from "../../core/src/lib.js";
 import {
   Batch,
   batchSerialize_serialize,
@@ -415,7 +416,7 @@ async function commitBatch(batch, author) {
   return await changeDesign("batch", json, author);
 }
 
-export function editHierarchy(edit) {
+export function applyEdit(edit) {
   const revision = $withBorrow(editor, (editor) => editor.revision, true);
   const edit$1 = edit.TAG === "Patch" ? { ...edit, layer: { ...edit.layer } } : edit;
   (async () => {
@@ -463,7 +464,13 @@ export function layerTree() {
 }
 
 export function addImage(file) {
-  const revision = $withBorrow(editor, (editor) => editor.revision, true);
+  const [revision, board] = $withBorrow(
+    editor,
+    (editor) => [editor.revision, editor.document.scene?.board ?? dimensionsDefault_default()],
+    true,
+  );
+  const captured = board.width;
+  const captured$1 = board.height;
   (async () => {
     const result = await (async () => {
       const result = await Browser.readImage(file);
@@ -475,14 +482,19 @@ export function addImage(file) {
       if (result$1.TAG === "Err") {
         return result$1;
       }
-      const [width, height] = result$1._0;
-      const scale = $f64Min(160 / $f64Max(width, height), 1);
+      let [width, height] = result$1._0;
+      const scale = $f64Min(
+        $f64Min($f64Min(160 / $f64Max(width, height), captured / width), captured$1 / height),
+        1,
+      );
+      width = $f64ToInt($f64Max($round(width * scale), 1), -2147483648, 2147483647);
+      height = $f64ToInt($f64Max($round(height * scale), 1), -2147483648, 2147483647);
       const placement = {
         image,
-        x: 40,
-        y: 40,
-        width: $f64ToInt($f64Max($round(width * scale), 1), -2147483648, 2147483647),
-        height: $f64ToInt($f64Max($round(height * scale), 1), -2147483648, 2147483647),
+        x: Math.min(40, (captured - width) | 0),
+        y: Math.min(40, (captured$1 - height) | 0),
+        width,
+        height,
       };
       return await commitBatch(
         {

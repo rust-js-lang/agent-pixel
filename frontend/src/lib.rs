@@ -341,7 +341,7 @@ async fn commit_batch(batch: Batch, author: Author) -> Result<String, String> {
     change_design("batch", &json, author).await
 }
 
-fn edit_hierarchy(edit: Edit) {
+fn apply_edit(edit: Edit) {
     let revision = EDITOR.with_borrow(|editor| editor.revision.clone());
     js::spawn(Box::new(async move {
         if let Err(error) = commit_batch(
@@ -370,18 +370,33 @@ fn layer_tree() -> Result<String, String> {
 }
 
 fn add_image(file: &'static webapi::File) {
-    let revision = EDITOR.with_borrow(|editor| editor.revision.clone());
+    let (revision, board) = EDITOR.with_borrow(|editor| {
+        (
+            editor.revision.clone(),
+            editor
+                .document
+                .scene
+                .as_ref()
+                .map(|scene| scene.board)
+                .unwrap_or_default(),
+        )
+    });
     js::spawn(Box::new(async move {
         let result = async {
             let image = browser::read_image(file).await?;
             let (width, height) = browser::image_dimensions(&image).await?;
-            let scale = (160.0 / width.max(height)).min(1.0);
+            let scale = (160.0 / width.max(height))
+                .min(f64::from(board.width) / width)
+                .min(f64::from(board.height) / height)
+                .min(1.0);
+            let width = (width * scale).round().max(1.0) as i32;
+            let height = (height * scale).round().max(1.0) as i32;
             let placement = ImagePlacement {
                 image,
-                x: 40,
-                y: 40,
-                width: (width * scale).round().max(1.0) as i32,
-                height: (height * scale).round().max(1.0) as i32,
+                x: 40.min(board.width - width),
+                y: 40.min(board.height - height),
+                width,
+                height,
             };
             commit_batch(
                 Batch {

@@ -1,7 +1,6 @@
 use crate::{
-    BOARD_HEIGHT, BOARD_WIDTH,
+    Dimensions,
     assets::{ImageAsset, ImagePlacement, MAX_SCENE_IMAGE_BYTES},
-    fits_board,
     hierarchy::LayerGroup,
 };
 use serde::{Deserialize, Serialize};
@@ -32,6 +31,8 @@ pub struct Layer {
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct Scene {
     pub version: u8,
+    #[serde(default, skip_serializing_if = "Dimensions::is_default")]
+    pub board: Dimensions,
     pub layers: Vec<Layer>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub instances: Vec<ComponentInstance>,
@@ -101,28 +102,33 @@ fn placed_layers(
     x: i32,
     y: i32,
     fit: bool,
+    board: Dimensions,
 ) -> Result<Vec<Layer>, &'static str> {
+    let max_source = Dimensions::LARGEST;
     if variant.layers.is_empty() {
         return Err("Cannot insert an empty component.");
     }
-    let (mut left, mut top, mut right, mut bottom) = (BOARD_WIDTH, BOARD_HEIGHT, 0, 0);
+    let (mut left, mut top, mut right, mut bottom) = (max_source.width, max_source.height, 0, 0);
     for layer in &variant.layers {
-        layer.validate()?;
+        layer.validate(max_source)?;
         left = left.min(layer.x);
         top = top.min(layer.y);
         right = right.max(layer.x + layer.width);
         bottom = bottom.max(layer.y + layer.height);
     }
     let (width, height) = (right - left, bottom - top);
+    if width > board.width || height > board.height {
+        return Err("The component is larger than this artboard.");
+    }
     let (x, y) = if fit {
         (
-            x.clamp(0, BOARD_WIDTH - width),
-            y.clamp(0, BOARD_HEIGHT - height),
+            x.clamp(0, board.width - width),
+            y.clamp(0, board.height - height),
         )
     } else {
         (x, y)
     };
-    if !fits_board(x, y, width, height) {
+    if !board.fits(x, y, width, height) {
         return Err("Keep the entire component inside the artboard.");
     }
     Ok(variant
@@ -174,7 +180,7 @@ impl Layer {
         }
     }
 
-    fn validate(&self) -> Result<(), &'static str> {
+    fn validate(&self, board: Dimensions) -> Result<(), &'static str> {
         if !matches!(
             self.kind.as_str(),
             "ellipse" | "rectangle" | "text" | "image"
@@ -200,7 +206,7 @@ impl Layer {
         } else if self.text.is_some() || self.font_size.is_some() {
             return Err("Text properties require a text layer.");
         }
-        if !fits_board(self.x, self.y, self.width, self.height) {
+        if !board.fits(self.x, self.y, self.width, self.height) {
             return Err("Keep the entire shape inside the artboard.");
         }
         if !valid_id(&self.id) {
@@ -214,6 +220,7 @@ impl Scene {
     pub fn blank() -> Self {
         Self {
             version: VERSION,
+            board: Dimensions::default(),
             layers: Vec::new(),
             instances: Vec::new(),
             assets: Vec::new(),
@@ -224,6 +231,7 @@ impl Scene {
     pub fn poster() -> Self {
         Self {
             version: VERSION,
+            board: Dimensions::default(),
             layers: vec![
                 Layer::orbit("outer-disc", 44, 68, 392, INK),
                 Layer::orbit("orange-disc", 64, 88, 352, ORANGE),
@@ -243,6 +251,7 @@ impl Scene {
         if self.version != VERSION || self.layers.len() + self.groups.len() > MAX_LAYERS {
             return Err("Unsupported document.");
         }
+        self.board.validate()?;
         let mut assets = std::collections::HashSet::new();
         let mut bytes = 0;
         for asset in &self.assets {
@@ -257,7 +266,7 @@ impl Scene {
         }
         let mut ids = std::collections::HashSet::new();
         for layer in &self.layers {
-            layer.validate()?;
+            layer.validate(self.board)?;
             if layer
                 .image_id
                 .as_ref()
@@ -311,6 +320,19 @@ impl Scene {
         Ok(())
     }
 
+    fn resize(&mut self, board: Dimensions) -> Result<(), &'static str> {
+        board.validate()?;
+        if self
+            .layers
+            .iter()
+            .any(|layer| !board.fits(layer.x, layer.y, layer.width, layer.height))
+        {
+            return Err("Move or resize layers outside the new artboard bounds first.");
+        }
+        self.board = board;
+        Ok(())
+    }
+
     fn place_image(
         &mut self,
         placement: ImagePlacement,
@@ -336,7 +358,7 @@ impl Scene {
             font_size: None,
             image_id: Some(existing.map_or_else(|| id.clone(), |asset| asset.id.clone())),
         };
-        layer.validate()?;
+        layer.validate(self.board)?;
         if existing.is_none() {
             let bytes = self
                 .assets
@@ -366,7 +388,7 @@ impl Scene {
         insert: ComponentInsert,
         id: String,
     ) -> Result<Vec<String>, &'static str> {
-        let layers = placed_layers(&insert.variant, &id, insert.x, insert.y, false)?;
+        let layers = placed_layers(&insert.variant, &id, insert.x, insert.y, false, self.board)?;
         let ids: Vec<_> = layers.iter().map(|layer| layer.id.clone()).collect();
         let mut candidate = self.clone();
         candidate.layers.extend(layers);
@@ -394,7 +416,14 @@ impl Scene {
         if instance.family != variant.family {
             return Err("Choose a variant from the same component family.");
         }
-        let layers = placed_layers(variant, &instance.id, instance.x, instance.y, fit)?;
+        let layers = placed_layers(
+            variant,
+            &instance.id,
+            instance.x,
+            instance.y,
+            fit,
+            self.board,
+        )?;
         let position = self
             .layers
             .iter()
@@ -514,15 +543,17 @@ impl Scene {
             }
             None => None,
         };
+        let default_width = width.unwrap_or(self.board.width.min(80));
+        let default_height = height.unwrap_or(self.board.height.min(80));
         let mut layer = match index {
             Some(index) => self.layers[index].clone(),
             None => Layer {
                 id: new_id,
                 kind: "rectangle".into(),
-                x: 40,
-                y: 40,
-                width: 80,
-                height: 80,
+                x: 40.min(self.board.width.saturating_sub(default_width).max(0)),
+                y: 40.min(self.board.height.saturating_sub(default_height).max(0)),
+                width: default_width,
+                height: default_height,
                 fill: ORANGE.into(),
                 text: None,
                 font_size: None,
@@ -553,7 +584,7 @@ impl Scene {
         if let Some(font_size) = font_size {
             layer.font_size = Some(font_size);
         }
-        layer.validate()?;
+        layer.validate(self.board)?;
         let id = layer.id.clone();
         match index {
             Some(index) => self.layers[index] = layer,
@@ -612,6 +643,10 @@ pub enum Edit {
     Delete {
         id: String,
     },
+    ResizeArtboard {
+        width: i32,
+        height: i32,
+    },
     PlaceImage {
         placement: ImagePlacement,
     },
@@ -644,12 +679,6 @@ pub struct Design {
     pub edited: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub inserted: Option<Vec<String>>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct Dimensions {
-    pub width: i32,
-    pub height: i32,
 }
 
 const HISTORY_LIMIT: usize = 32;
@@ -730,6 +759,10 @@ impl Session {
         for (index, edit) in batch.edits.into_iter().enumerate() {
             selected = match edit {
                 Edit::Patch { layer } => Some(candidate.edit(layer, format!("{id}-{index}"))?),
+                Edit::ResizeArtboard { width, height } => {
+                    candidate.resize(Dimensions { width, height })?;
+                    None
+                }
                 Edit::PlaceImage { placement } => {
                     Some(candidate.place_image(placement, format!("{id}-{index}"))?)
                 }
@@ -839,10 +872,7 @@ impl Session {
         };
         let design = Design {
             scene: self.scene.clone(),
-            board: Dimensions {
-                width: BOARD_WIDTH,
-                height: BOARD_HEIGHT,
-            },
+            board: self.scene.board,
             revision: self.revision.clone(),
             history: History {
                 undo: self.undo.iter().map(|entry| entry.entry.clone()).collect(),

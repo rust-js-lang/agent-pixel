@@ -98,6 +98,7 @@ impl ProjectBundle {
                 return Err("Invalid or duplicate component variant.");
             }
             let mut source = Scene::blank();
+            source.board = crate::Dimensions::LARGEST;
             source.layers = variant.layers.clone();
             source.assets = variant.assets.clone();
             source.validate()?;

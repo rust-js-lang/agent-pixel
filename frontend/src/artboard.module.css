@@ -1,5 +1,5 @@
 .artboard {
-  position: relative; aspect-ratio: 4/5; background: #f5edda;
+  position: relative; background: #f5edda;
   box-shadow: 0 5px 22px #19241824; container-type: inline-size; overflow: hidden;
 }
 .mockup { background: #fff; }

@@ -12,7 +12,8 @@ test("dashboard, editor and prototype styles are scoped", async ({ page }) => {
   await card.click();
   await page.addStyleTag({ content: globalRules });
   await expect(page.getByRole("region", { name: "Canvas" })).toHaveCSS("display", "flex");
-  await expect(page.locator("#art")).toHaveCSS("aspect-ratio", "4 / 5");
+  const bounds = await page.locator("#art").boundingBox();
+  expect(bounds.width / bounds.height).toBeCloseTo(4 / 5, 2);
 
   await page.setViewportSize({ width: 390, height: 850 });
   await page.goto("/?project=current-reminders");

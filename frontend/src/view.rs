@@ -6,7 +6,7 @@ use crate::{
 };
 
 use pixel_geometry::{
-    BOARD_HEIGHT, BOARD_WIDTH,
+    Dimensions, MAX_ARTBOARD_SIZE, MIN_ARTBOARD_SIZE,
     assets::ImageAsset,
     hierarchy::{LayerGroup, LayerNode},
     scene::{Author, ComponentInstance, Edit, Layer, Patch, Scene},
@@ -23,6 +23,7 @@ struct Drag {
     height: i32,
     origin_x: f64,
     origin_y: f64,
+    board: Dimensions,
     scale_x: f64,
     scale_y: f64,
 }
@@ -36,10 +37,12 @@ impl Drag {
         let dx = ((event.client_x() - self.origin_x) * self.scale_x).round() as i32;
         let dy = ((event.client_y() - self.origin_y) * self.scale_y).round() as i32;
         (
-            self.x.saturating_add(dx).clamp(0, BOARD_WIDTH - self.width),
+            self.x
+                .saturating_add(dx)
+                .clamp(0, self.board.width - self.width),
             self.y
                 .saturating_add(dy)
-                .clamp(0, BOARD_HEIGHT - self.height),
+                .clamp(0, self.board.height - self.height),
         )
     }
 }
@@ -48,7 +51,7 @@ fn percent(value: i32, extent: i32) -> String {
     format!("{}%", f64::from(value) / f64::from(extent) * 100.0)
 }
 
-fn begin_drag(layer: &Layer, event: &PointerEvent<HTMLButtonElement>) {
+fn begin_drag(layer: &Layer, dimensions: Dimensions, event: &PointerEvent<HTMLButtonElement>) {
     if event.button() != 0 {
         return;
     }
@@ -69,31 +72,32 @@ fn begin_drag(layer: &Layer, event: &PointerEvent<HTMLButtonElement>) {
             height: layer.height,
             origin_x: event.client_x(),
             origin_y: event.client_y(),
-            scale_x: f64::from(BOARD_WIDTH) / bounds.width(),
-            scale_y: f64::from(BOARD_HEIGHT) / bounds.height(),
+            board: dimensions,
+            scale_x: f64::from(dimensions.width) / bounds.width(),
+            scale_y: f64::from(dimensions.height) / bounds.height(),
         })
     });
     select(layer.id.clone());
 }
 
-fn set_position(event: &PointerEvent<HTMLButtonElement>, x: i32, y: i32) {
+fn set_position(event: &PointerEvent<HTMLButtonElement>, x: i32, y: i32, board: Dimensions) {
     let style = event.current_target().style();
-    style.set_left(&percent(x, BOARD_WIDTH));
-    style.set_top(&percent(y, BOARD_HEIGHT));
+    style.set_left(&percent(x, board.width));
+    style.set_top(&percent(y, board.height));
 }
 
 fn move_drag(event: &PointerEvent<HTMLButtonElement>) {
     DRAG.with_borrow(|drag| {
         if let Some(drag) = drag {
             let (x, y) = drag.position(event);
-            set_position(event, x, y);
+            set_position(event, x, y, drag.board);
         }
     });
 }
 
 fn end_drag(event: &PointerEvent<HTMLButtonElement>, commit: bool) {
     if let Some(drag) = DRAG.take() {
-        set_position(event, drag.x, drag.y);
+        set_position(event, drag.x, drag.y, drag.board);
         let (x, y) = drag.position(event);
         if commit && (x != drag.x || y != drag.y) {
             edit(Patch {
@@ -106,12 +110,12 @@ fn end_drag(event: &PointerEvent<HTMLButtonElement>, commit: bool) {
     }
 }
 
-fn layer_style(layer: &Layer) -> CSSProperties {
+fn layer_style(layer: &Layer, board: Dimensions) -> CSSProperties {
     CSSProperties::new()
-        .left(percent(layer.x, BOARD_WIDTH))
-        .top(percent(layer.y, BOARD_HEIGHT))
-        .width(percent(layer.width, BOARD_WIDTH))
-        .height(percent(layer.height, BOARD_HEIGHT))
+        .left(percent(layer.x, board.width))
+        .top(percent(layer.y, board.height))
+        .width(percent(layer.width, board.width))
+        .height(percent(layer.height, board.height))
         .background(if layer.kind == "text" {
             "transparent".into()
         } else {
@@ -120,7 +124,7 @@ fn layer_style(layer: &Layer) -> CSSProperties {
         .border_radius(if layer.kind == "ellipse" { "50%" } else { "0" })
         .color(layer.fill.clone())
         .font_size(layer.font_size.map_or_else(String::new, |size| {
-            format!("{}cqw", f64::from(size) / f64::from(BOARD_WIDTH) * 100.0)
+            format!("{}cqw", f64::from(size) / f64::from(board.width) * 100.0)
         }))
 }
 
@@ -138,19 +142,24 @@ fn layer_content(layer: &Layer, image: Option<&ImageAsset>) -> JSX::Element {
     }
 }
 
-pub fn preview_layer(layer: &Layer, image: Option<&ImageAsset>) -> JSX::Element {
+pub fn preview_layer(layer: &Layer, image: Option<&ImageAsset>, board: Dimensions) -> JSX::Element {
     let class = if layer.kind == "text" {
         format!("{} {}", ARTBOARD.preview_layer(), ARTBOARD.preview_text())
     } else {
         ARTBOARD.preview_layer()
     };
-    jsx! { <div key={layer.id.clone()} className={class} style={layer_style(layer)}>{layer_content(layer, image)}</div> }
+    jsx! { <div key={layer.id.clone()} className={class} style={layer_style(layer, board)}>{layer_content(layer, image)}</div> }
 }
 
-fn shape(layer: &Layer, linked: bool, image: Option<&ImageAsset>) -> JSX::Element {
+fn shape(
+    layer: &Layer,
+    linked: bool,
+    image: Option<&ImageAsset>,
+    board: Dimensions,
+) -> JSX::Element {
     let captured = layer.clone();
     let id = layer.id.clone();
-    let styles = layer_style(layer);
+    let styles = layer_style(layer, board);
     let class = if layer.kind == "text" {
         format!("{} {}", EDITOR_STYLES.shape(), EDITOR_STYLES.text_layer())
     } else {
@@ -160,7 +169,7 @@ fn shape(layer: &Layer, linked: bool, image: Option<&ImageAsset>) -> JSX::Elemen
         <button key={layer.id.clone()} className={class} style={styles}
             aria-label={format!("Select {}", image.map_or_else(|| layer.name(), |asset| asset.image.name.clone()))}
             onClick={move |_| select(id.clone())}
-            onPointerDown={move |event| { if !linked { begin_drag(&captured, event); } }}
+            onPointerDown={move |event| { if !linked { begin_drag(&captured, board, event); } }}
             onPointerMove={move_drag}
             onPointerUp={|event| end_drag(event, true)}
             onPointerCancel={|event| end_drag(event, false)}>{layer_content(layer, image)}</button>
@@ -219,7 +228,7 @@ fn layer_panel(scene: Option<&Scene>, selected: Option<&str>, disabled: bool) ->
         <div id="layers" className={EDITOR_STYLES.layers()}>
             <form aria-label="New layer group" action={|data: &webapi::FormData| {
                 if let Some(FormDataEntryValue::Str(name)) = data.get("group-name") {
-                    crate::edit_hierarchy(Edit::CreateGroup { name: name.trim().into(), parent_id: None });
+                    crate::apply_edit(Edit::CreateGroup { name: name.trim().into(), parent_id: None });
                 }
             }}>
                 <input name="group-name" aria-label="New group name" placeholder="Group name" required maxLength={80} disabled={disabled} />
@@ -240,7 +249,7 @@ fn parent_picker(scene: &Scene, id: &str, disabled: bool) -> JSX::Element {
         <label>"Parent group"
             <select value={value} disabled={disabled} onChange={move |event| {
                 let value = event.current_target().value();
-                crate::edit_hierarchy(Edit::SetLayerParent { id: id.clone(), parent_id: (!value.is_empty()).then_some(value) });
+                crate::apply_edit(Edit::SetLayerParent { id: id.clone(), parent_id: (!value.is_empty()).then_some(value) });
             }}>
                 <option value="">"Top level"</option>{options}
             </select>
@@ -256,13 +265,13 @@ fn group_inspector(group: &LayerGroup, disabled: bool) -> JSX::Element {
             <h2>{group.name.clone()}</h2>
             <form key={format!("{}-{}", group.id, group.name)} aria-label="Rename group" action={move |data: &webapi::FormData| {
                 if let Some(FormDataEntryValue::Str(name)) = data.get("group-name") {
-                    crate::edit_hierarchy(Edit::RenameGroup { id: rename_id.clone(), name: name.trim().into() });
+                    crate::apply_edit(Edit::RenameGroup { id: rename_id.clone(), name: name.trim().into() });
                 }
             }}>
                 <input name="group-name" aria-label="Group name" defaultValue={group.name.clone()} required maxLength={80} disabled={disabled} />
                 <button type="submit" disabled={disabled}>"Rename"</button>
             </form>
-            <p><button type="button" disabled={disabled} onClick={move |_| crate::edit_hierarchy(Edit::Ungroup { id: id.clone() })}>"Ungroup"</button></p>
+            <p><button type="button" disabled={disabled} onClick={move |_| crate::apply_edit(Edit::Ungroup { id: id.clone() })}>"Ungroup"</button></p>
         </>
     }
 }
@@ -276,13 +285,13 @@ enum Field {
     FontSize,
 }
 
-fn numeric_field(field: Field, layer: &Layer, version: u32) -> JSX::Element {
-    let (name, short, previous) = match field {
-        Field::X => ("x", "X", layer.x),
-        Field::Y => ("y", "Y", layer.y),
-        Field::Width => ("width", "W", layer.width),
-        Field::Height => ("height", "H", layer.height),
-        Field::FontSize => ("font size", "Px", layer.font_size.unwrap_or(20)),
+fn numeric_field(field: Field, layer: &Layer, version: u32, board: Dimensions) -> JSX::Element {
+    let (name, short, previous, max) = match field {
+        Field::X => ("x", "X", layer.x, board.width),
+        Field::Y => ("y", "Y", layer.y, board.height),
+        Field::Width => ("width", "W", layer.width, board.width),
+        Field::Height => ("height", "H", layer.height, board.height),
+        Field::FontSize => ("font size", "Px", layer.font_size.unwrap_or(20), 96),
     };
     let id = layer.id.clone();
     jsx! {
@@ -291,7 +300,7 @@ fn numeric_field(field: Field, layer: &Layer, version: u32) -> JSX::Element {
                 onBlur={move |event| {
                     let input = event.current_target();
                     let value = input.value_as_number();
-                    if !value.is_finite() || value.fract() != 0.0 || value < 0.0 || value > f64::from(BOARD_HEIGHT) {
+                    if !value.is_finite() || value.fract() != 0.0 || value < 0.0 || value > f64::from(max) {
                         crate::status("Keep the entire shape inside the artboard.".into());
                         input.set_value(&previous.to_string());
                     } else if value as i32 != previous {
@@ -305,11 +314,16 @@ fn numeric_field(field: Field, layer: &Layer, version: u32) -> JSX::Element {
     }
 }
 
-fn inspector(layer: &Layer, version: u32, image: Option<&ImageAsset>) -> JSX::Element {
+fn inspector(
+    layer: &Layer,
+    version: u32,
+    image: Option<&ImageAsset>,
+    board: Dimensions,
+) -> JSX::Element {
     let id = layer.id.clone();
     let fields = [Field::X, Field::Y, Field::Width, Field::Height]
         .into_iter()
-        .map(|field| numeric_field(field, layer, version))
+        .map(|field| numeric_field(field, layer, version, board))
         .collect::<Vec<_>>();
     let text_id = layer.id.clone();
     let text = layer.text.as_ref().map(|text| jsx! {
@@ -319,7 +333,7 @@ fn inspector(layer: &Layer, version: u32, image: Option<&ImageAsset>) -> JSX::El
                 <input key={format!("{text_id}-{text}-{version}")} aria-label="Text content"
                     defaultValue={text.clone()} onBlur={move |event| edit(Patch { id: Some(text_id.clone()), text: Some(event.current_target().value()), ..Patch::default() })} />
             </label>
-            {numeric_field(Field::FontSize, layer, version)}
+            {numeric_field(Field::FontSize, layer, version, board)}
         </>
     });
     jsx! {
@@ -366,7 +380,36 @@ fn instance_inspector(instance: &ComponentInstance) -> JSX::Element {
     }
 }
 
-fn component_picker(disabled: bool) -> JSX::Element {
+pub fn board_ratio(board: Dimensions) -> f64 {
+    f64::from(board.width) / f64::from(board.height)
+}
+
+pub fn board_aspect(board: Dimensions) -> String {
+    format!("{} / {}", board.width, board.height)
+}
+
+fn artboard_size(board: Dimensions, disabled: bool) -> JSX::Element {
+    jsx! {
+        <details className={EDITOR_STYLES.component_library()}>
+            <summary>"Artboard size"</summary>
+            <form key={format!("{}-{}", board.width, board.height)} aria-label="Resize artboard" action={|data: &webapi::FormData| {
+                if let (Some(FormDataEntryValue::Str(width)), Some(FormDataEntryValue::Str(height))) = (data.get("width"), data.get("height")) {
+                    if let (Ok(width), Ok(height)) = (width.parse::<i32>(), height.parse::<i32>()) {
+                        crate::apply_edit(Edit::ResizeArtboard { width, height });
+                    }
+                }
+            }}>
+                <div className={EDITOR_STYLES.component_position()}>
+                    <label>"Width"<input aria-label="Artboard width" name="width" type="number" min={MIN_ARTBOARD_SIZE} max={MAX_ARTBOARD_SIZE} defaultValue={board.width} disabled={disabled} required /></label>
+                    <label>"Height"<input aria-label="Artboard height" name="height" type="number" min={MIN_ARTBOARD_SIZE} max={MAX_ARTBOARD_SIZE} defaultValue={board.height} disabled={disabled} required /></label>
+                </div>
+                <button type="submit" disabled={disabled}>"Resize artboard"</button>
+            </form>
+        </details>
+    }
+}
+
+fn component_picker(disabled: bool, board: Dimensions) -> JSX::Element {
     let options = crate::components::variants().iter().map(|variant| jsx! {
         <option key={variant.id} value={variant.id}>{format!("{} · {}", variant.family, variant.name)}</option>
     }).collect::<Vec<_>>();
@@ -389,8 +432,8 @@ fn component_picker(disabled: bool) -> JSX::Element {
                 <label htmlFor="component-variant">"Component variant"</label>
                 <select id="component-variant" name="variant">{options}</select>
                 <div className={EDITOR_STYLES.component_position()}>
-                    <label>"X"<input aria-label="Component X" name="x" type="number" min={0} max={BOARD_WIDTH - 1} defaultValue={40} required /></label>
-                    <label>"Y"<input aria-label="Component Y" name="y" type="number" min={0} max={BOARD_HEIGHT - 1} defaultValue={40} required /></label>
+                    <label>"X"<input aria-label="Component X" name="x" type="number" min={0} max={board.width - 1} defaultValue={40} required /></label>
+                    <label>"Y"<input aria-label="Component Y" name="y" type="number" min={0} max={board.height - 1} defaultValue={40} required /></label>
                 </div>
                 <button type="submit" disabled={disabled}>"Insert component"</button>
             </form>
@@ -427,11 +470,12 @@ fn journey_navigation(
 pub(crate) fn prototype(editor: &Editor) -> JSX::Element {
     let screen = editor.screen.as_ref().expect("Prototype screen");
     let scene = editor.document.scene.as_ref();
+    let board = scene.map(|scene| scene.board).unwrap_or_default();
     let layers = scene.map(|scene| {
         scene
             .layers
             .iter()
-            .map(|layer| preview_layer(layer, scene.image_for_layer(layer)))
+            .map(|layer| preview_layer(layer, scene.image_for_layer(layer), board))
             .collect::<Vec<_>>()
     });
     let action = screen.action.as_ref().expect("Prototype action");
@@ -442,9 +486,9 @@ pub(crate) fn prototype(editor: &Editor) -> JSX::Element {
             .find(|layer| layer.id == action.layer_id)
     });
     let hotspot = source.map(|layer| {
-        let placement = CSSProperties::new().left(percent(layer.x, BOARD_WIDTH))
-            .top(percent(layer.y, BOARD_HEIGHT)).width(percent(layer.width, BOARD_WIDTH))
-            .height(percent(layer.height, BOARD_HEIGHT));
+        let placement = CSSProperties::new().left(percent(layer.x, board.width))
+            .top(percent(layer.y, board.height)).width(percent(layer.width, board.width))
+            .height(percent(layer.height, board.height));
         jsx! {
             <a className={JOURNEY.prototype_hotspot()} href={journey::href(&editor.project.id, &action.next, true)} style={placement}
                 aria-label={action.label.clone()} />
@@ -459,7 +503,7 @@ pub(crate) fn prototype(editor: &Editor) -> JSX::Element {
             <main className={JOURNEY.journey_preview()}>
                 <section className={JOURNEY.prototype_canvas()} aria-label="Prototype artboard">
                     <h1>{screen.title.clone()}</h1>
-                    <div id="art" className={format!("{} {}", ARTBOARD.artboard(), ARTBOARD.mockup())}>
+                    <div id="art" style={CSSProperties::new().aspect_ratio(board_aspect(board))} className={format!("{} {}", ARTBOARD.artboard(), ARTBOARD.mockup())}>
                         <div aria-hidden="true">{layers}</div>
                         {hotspot}
                     </div>
@@ -484,6 +528,7 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
         .map_or(&[][..], |scene| scene.layers.as_slice());
     let selected = editor.selected.as_deref();
     let scene = editor.document.scene.as_ref();
+    let board = scene.map(|scene| scene.board).unwrap_or_default();
     let shape_list = layers
         .iter()
         .map(|layer| {
@@ -493,6 +538,7 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
                     .and_then(|scene| scene.instance_for_layer(&layer.id))
                     .is_some(),
                 scene.and_then(|scene| scene.image_for_layer(layer)),
+                board,
             )
         })
         .collect::<Vec<_>>();
@@ -523,6 +569,7 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
                 layer,
                 editor.fields_version,
                 scene.and_then(|scene| scene.image_for_layer(layer)),
+                board,
             )
         })
     };
@@ -534,7 +581,11 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
     let screen = editor.screen.as_ref();
     let poster = editor.poster;
     let scale = editor.zoom / 100.0;
-    let sheet_style = CSSProperties::new().width(format!("calc(var(--fit-width) * {scale})"));
+    let ratio = board_ratio(board);
+    let width = board.width;
+    let sheet_style = CSSProperties::new().width(format!(
+        "calc(min(var(--available-width), {width}px, calc(var(--fit-height) * {ratio})) * {scale})"
+    ));
     let zoom_label = format!("{:.0}%", editor.zoom);
     jsx! {
         <div className={EDITOR_STYLES.editor()}>
@@ -547,15 +598,15 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
             <main className={EDITOR_STYLES.layout()}>
                 <aside aria-label="Layers panel">
                     <div className={EDITOR_STYLES.eyebrow()}>"DOCUMENT"</div><h2>{document_title}</h2>
-                    <p>{if !poster { "Mobile artboard" } else { "Poster composition" }}</p>
+                    <p>{if poster { "Poster composition" } else { "Artboard" }}</p>
                     {screen.filter(|screen| screen.action.is_some() || editor.screens.len() > 1).map(|screen| journey_navigation(editor, screen, false))}<hr /><h3>"Layers"</h3>{layer_panel(scene, selected, disabled)}
                 </aside>
                 <section className={EDITOR_STYLES.workspace()} aria-label="Canvas">
                     <div id="canvas-scroll" className={CANVAS.canvas_scroll()} ref={zoom::attach}>
                         <div className={CANVAS.canvas_stage()}>
                     <div style={sheet_style}>
-                        <div className={EDITOR_STYLES.legend()}>{screen.map_or("ARTBOARD 01", |screen| screen.title.as_str())} <span>{format!("{BOARD_WIDTH} × {BOARD_HEIGHT}")}</span></div>
-                        <div id="art" className={if poster { ARTBOARD.artboard() } else { format!("{} {}", ARTBOARD.artboard(), ARTBOARD.mockup()) }}>
+                        <div className={EDITOR_STYLES.legend()}>{screen.map_or("ARTBOARD 01", |screen| screen.title.as_str())} <span>{format!("{} × {}", board.width, board.height)}</span></div>
+                        <div id="art" style={CSSProperties::new().aspect_ratio(board_aspect(board))} className={if poster { ARTBOARD.artboard() } else { format!("{} {}", ARTBOARD.artboard(), ARTBOARD.mockup()) }}>
                             {(poster).then(|| jsx! { <div className={EDITOR_STYLES.imprint()}>"FORM STUDIES" <span>"SERIES 01 / 03"</span></div> })}
                             <div id="shapes" className={EDITOR_STYLES.shapes()}>{shape_list}</div>
                             {(poster).then(|| jsx! { <div className={EDITOR_STYLES.caption()}><b>"Orbit study."</b><small>"KINETIC FORMS" <span>"FIG. 01"</span></small></div> })}
@@ -570,7 +621,7 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
                         <button type="button" disabled={disabled || selected.is_none() || group.is_some()} onClick={|_| crate::delete_selection()}>"Delete layer"</button>
                         <button id="rect" disabled={disabled} onClick={|_| add("rectangle")}>"▢  Rectangle +"</button>
                         <button id="ellipse" disabled={disabled} onClick={|_| add("ellipse")}>"○  Ellipse +"</button>
-                        <button disabled={disabled} onClick={|_| edit(Patch { kind: Some("text".into()), text: Some("Label".into()), font_size: Some(20), width: Some(170), height: Some(32), fill: Some("#20231f".into()), ..Patch::default() })}>"T  Text +"</button>
+                        <button disabled={disabled} onClick={move |_| edit(Patch { kind: Some("text".into()), text: Some("Label".into()), font_size: Some(20), width: Some(170.min(board.width)), height: Some(32), fill: Some("#20231f".into()), ..Patch::default() })}>"T  Text +"</button>
                     </div>
                     <div className={CANVAS.zoom_tools()} role="group" aria-label="Canvas zoom">
                         <button type="button" aria-label="Zoom out" disabled={editor.zoom <= zoom::MIN} onClick={|_| zoom::step(false)}>"−"</button>
@@ -590,7 +641,8 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
                             }
                         }} />
                     </label></p>
-                    {component_picker(disabled)}
+                    {component_picker(disabled, board)}
+                    {artboard_size(board, disabled)}
                     {properties}
                     {parent_control}
                     {editor.history.undo.last().map(|entry| jsx! {

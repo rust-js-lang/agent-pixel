@@ -215,6 +215,7 @@ export const ProjectBundle = {
         return { TAG: "Err", _0: "Invalid or duplicate component variant." };
       }
       const source = Scene.blank();
+      source.board = { width: 8192, height: 8192 };
       source.layers = variant.layers.map((item) => ({ ...item }));
       source.assets = variant.assets.slice();
       const result = Scene.validate(source);

@@ -46,7 +46,7 @@
 }
 .orbit-tile { background-color: #ebe4d4; background-image: radial-gradient(#ccc2a9 .7px, transparent .7px); }
 .project-preview {
-  position: relative; width: 113px; aspect-ratio: 4/5;
+  position: relative;
   container-type: inline-size; overflow: hidden; background: white;
   box-shadow: 0 3px 14px #27382126;
 }
