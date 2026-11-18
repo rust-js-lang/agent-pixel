@@ -28,6 +28,7 @@ import {
   screenList,
   showWorkspacePanel,
 } from "./lib.js";
+import * as Routing from "./routing.jsx";
 import {
   $debugJsonError,
   $displayJsonError,
@@ -41,6 +42,16 @@ import {
   $unwrap,
   $unwrapOk,
 } from "@rust-js/std";
+
+let registered;
+
+export function clearTools() {
+  if (registered != null) {
+    const controller = registered;
+    registered = undefined;
+    controller.abort();
+  }
+}
 
 const SCREEN_EDIT_SCHEMA = `{
     "type":"object","required":["revision","edit"],"additionalProperties":false,"properties":{
@@ -90,7 +101,7 @@ function openScreen(input) {
   map.set("id", { TAG: "String", _0: id });
   map.set("href", { TAG: "String", _0: href });
   const json = $jsonValueText({ TAG: "Object", _0: map }, false);
-  location.assign(href);
+  Routing.navigate(href);
   return { TAG: "Ok", _0: json };
 }
 
@@ -501,9 +512,11 @@ async function register(tools) {
   if (context == null) {
     return { TAG: "Ok", _0: false };
   }
+  const controller = new AbortController();
+  registered = controller;
   for (let i = 0; i < tools.length; i++) {
     const tool = tools[i];
-    const result = $try(() => context.registerTool(tool));
+    const result = $try(() => context.registerTool(tool, { signal: controller.signal }));
     if (result.TAG === "Err") {
       return result;
     }
@@ -699,7 +712,7 @@ function openProject(input) {
     return result$4;
   }
   const result = result$4._0;
-  location.assign(Project.href(project));
+  Routing.navigate(Project.href(project));
   return { TAG: "Ok", _0: result };
 }
 

@@ -5,6 +5,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
+agent-pixel-react-router = { path = "../bindings/react-router" }
 pixel-geometry = { path = "../core" }
 js = { package = "rust-js-builtins", path = "../.rust-js/builtins" }
 react = { package = "rust-js-react", path = "../.rust-js/react" }

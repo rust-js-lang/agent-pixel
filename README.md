@@ -24,6 +24,7 @@ Select a shape on the poster or in Layers. Drag it, edit its bounds in the inspe
 - `frontend/src` contains the editor, React components written with `jsx!`, and the WebMCP tool definitions and handlers.
 - `core/src` contains the poster, edits, bounds and validation shared by the worker and the native server.
 - `frontend/src/browser.rs`, `transport.rs` and `webmcp.rs` handle platform calls, worker messages and tool registration in Rust.
+- `bindings/react-router` is the Rust crate for React Router's browser router, location, and navigation hooks. The application uses React Router 8.5.1.
 - `site` contains HTML and CSS, plus the page and worker entry modules that call the compiled Rust functions.
 
 The Pages build bundles checked-in rust-js output. To regenerate that output after a Rust change, build the compiler from its [documented setup](https://github.com/rust-js-lang/rust-js/blob/ae378c0fc55459c2fc4b4796502a74bec5cd4f5c/DEVELOPMENT.md) and then run the frontend build. rust-js also regenerates the Rust dependencies used by the frontend.
@@ -93,6 +94,10 @@ The dashboard, editor, canvas, shared artboard, journey prototype, and page shel
 ## Back up and restore a project
 
 Open **Project backup** on the dashboard to download a versioned JSON bundle or restore one as a new project. On the dashboard, agents can call `export_project` with `{ id }` and `import_project` with `{ bundle }`. Each bundle contains the saved browser artboards, prototype links, and a snapshot of the component library. Restored instances resolve against that snapshot so they keep their appearance in a fresh browser.
+
+## Client-side routing
+
+Dashboard, project, screen, and prototype links use React Router in the same browser document. The existing query URLs and browser Back and Forward work under the GitHub Pages project prefix. WebMCP exposes the tools for the active view as you navigate.
 
 ## Project screens
 

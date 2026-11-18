@@ -55,6 +55,11 @@ export function route(): [
     boolean
 ] | null | undefined;
 
+export function routeAt(params: URLSearchParams): [
+    string,
+    boolean
+] | null | undefined;
+
 export function create(title: string): Promise<{
     TAG: "Ok";
     _0: Project;

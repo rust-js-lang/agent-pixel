@@ -3,16 +3,6 @@
 import { MAX_IMAGE_BYTES, RasterImage } from "../../core/src/assets.js";
 import { $settle, $try } from "@rust-js/std";
 
-export function workspaceQuery(name) {
-  const search = location.search;
-  return new URLSearchParams(search).has(name);
-}
-
-export function queryValue(name) {
-  const search = location.search;
-  return new URLSearchParams(search).get(name) ?? undefined;
-}
-
 export function loadDraft(key) {
   const result = $try(() => localStorage);
   if (result.TAG === "Err") {

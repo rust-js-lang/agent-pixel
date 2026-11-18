@@ -240,11 +240,16 @@ fn blank_mockup() -> Project {
 }
 
 pub fn route() -> Option<(String, bool)> {
-    if let Some(project) = browser::query_value("project") {
+    let search = webapi::window_global::location().search();
+    route_at(webapi::url_search_params::new(Some(&search)))
+}
+
+pub fn route_at(params: &webapi::URLSearchParams) -> Option<(String, bool)> {
+    if let Some(project) = params.get("project") {
         Some((project, false))
-    } else if browser::workspace_query("design") {
+    } else if params.has("design", None) {
         Some((WEB_APP.into(), false))
-    } else if browser::workspace_query("server") {
+    } else if params.has("server", None) {
         Some((ORBIT.into(), true))
     } else {
         None

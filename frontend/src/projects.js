@@ -362,12 +362,17 @@ function blankMockup() {
 }
 
 export function route() {
-  const project = Browser.queryValue("project");
-  if (project != null) {
+  const search = location.search;
+  return routeAt(new URLSearchParams(search));
+}
+
+export function routeAt(params) {
+  const project = params.get("project");
+  if (project !== null) {
     return [project, false];
-  } else if (Browser.workspaceQuery("design")) {
+  } else if (params.has("design")) {
     return [WEB_APP, false];
-  } else if (Browser.workspaceQuery("server")) {
+  } else if (params.has("server")) {
     return [ORBIT, true];
   }
 }

@@ -39,6 +39,7 @@ import * as Backup from "./backup.js";
 import * as Components from "./components.js";
 import * as Drafts from "./drafts.js";
 import { Project } from "./projects.js";
+import * as Routing from "./routing.jsx";
 import {
   $borrowMut,
   $cellReplace,
@@ -1378,7 +1379,7 @@ export function editor(editor) {
                   (async () => {
                     const value = await recoverPrevious(revision);
                     if (value.TAG === "Ok") {
-                      window.location.assign(Project.href(value._0));
+                      Routing.navigate(Project.href(value._0));
                     } else {
                       status(value._0);
                     }

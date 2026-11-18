@@ -11,6 +11,7 @@ import { Scene } from "../../core/src/scene.js";
 import { ProjectSource } from "./backup.js";
 import * as Backup from "./backup.js";
 import { message as message$1 } from "./lib.js";
+import * as Routing from "./routing.jsx";
 import * as Screens from "./screens.js";
 import { $displayF64, $settle } from "@rust-js/std";
 
@@ -153,7 +154,7 @@ export function BackupPanel({ projects }) {
                 result = { TAG: "Err", _0: message$1(error) };
               }
               if (result.TAG === "Ok") {
-                location.assign(Project.href(result._0));
+                Routing.navigate(Project.href(result._0));
               } else {
                 setError(result._0);
               }
@@ -206,7 +207,7 @@ export function Dashboard() {
                 (async () => {
                   const value = await Projects.create(title);
                   if (value.TAG === "Ok") {
-                    location.assign(Project.href(value._0));
+                    Routing.navigate(Project.href(value._0));
                   } else {
                     setError(value._0);
                   }

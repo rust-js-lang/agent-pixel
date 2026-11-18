@@ -14,6 +14,7 @@ mod components;
 mod dashboard;
 mod journey;
 mod projects;
+mod routing;
 mod screens;
 mod transport;
 mod view;
@@ -105,10 +106,10 @@ pub fn mount() {
         .expect("Editor root");
     let root = create_root(node, None);
     ROOT.set(Some(root));
-    js::spawn(Box::new(bootstrap(root)));
+    routing::start();
 }
 
-async fn bootstrap(root: &'static Root) {
+async fn initialize() -> Option<String> {
     let warning = drafts::reload_cache().await.err();
     let warning = screens::reload_cache().await.err().or(warning);
     window().add_event_listener(
@@ -152,18 +153,32 @@ async fn bootstrap(root: &'static Root) {
         },
         None,
     );
-    projects::initialize().await;
-    let Some((id, server)) = projects::route() else {
-        render_dashboard();
-        js::spawn(Box::new(async {
-            if let Err(error) = webmcp::register_dashboard_tools().await {
-                webapi::console::error((error.message(),));
+    window().add_event_listener(
+        events::Keydown,
+        |event: &webapi::KeyboardEvent| {
+            if EDITOR.with_borrow(|editor| editor.document.scene.is_some() && !editor.preview) {
+                zoom::keyboard(event);
             }
-        }));
+        },
+        None,
+    );
+    projects::initialize().await;
+    warning
+}
+
+async fn open_route(search: &str, warning: Option<String>) {
+    webmcp::clear_tools();
+    EDITOR.with_borrow_mut(|editor| *editor = Editor::default());
+    let params = webapi::url_search_params::new(Some(&search));
+    let Some((id, server)) = projects::route_at(params) else {
+        render_dashboard();
+        if let Err(error) = webmcp::register_dashboard_tools().await {
+            webapi::console::error((error.message(),));
+        }
         return;
     };
     let Some(project) = projects::find(&id) else {
-        root.render(match projects::warning() {
+        render_view(match projects::warning() {
             Some(error) => dashboard::unavailable(&error),
             None => dashboard::missing(),
         });
@@ -172,7 +187,7 @@ async fn bootstrap(root: &'static Root) {
     let source = match backup::source(&project) {
         Ok(source) => source,
         Err(error) => {
-            root.render(dashboard::unavailable(&error));
+            render_view(dashboard::unavailable(&error));
             return;
         }
     };
@@ -180,14 +195,14 @@ async fn bootstrap(root: &'static Root) {
     let requested = if server {
         Some(catalog.legacy_base_id.clone())
     } else {
-        browser::query_value("screen")
+        params.get("screen")
     };
     let current = match requested.as_deref() {
         Some(id) => catalog.screens.iter().find(|info| info.id == id),
         None => catalog.screens.first(),
     };
     let Some(current) = current.cloned() else {
-        root.render(dashboard::unavailable(
+        render_view(dashboard::unavailable(
             "This screen is no longer in the project.",
         ));
         return;
@@ -203,14 +218,11 @@ async fn bootstrap(root: &'static Root) {
             .screen
             .as_ref()
             .is_some_and(|screen| screen.action.is_some())
-            && browser::workspace_query("preview");
+            && params.has("preview", None);
         editor.project = project;
         editor.zoom = zoom::FIT;
         editor.server = server;
     });
-    if !EDITOR.with_borrow(|editor| editor.preview) {
-        window().add_event_listener(events::Keydown, zoom::keyboard, None);
-    }
     status("Opening document…".into());
     if let Err(error) = start(warning).await {
         status(error);
@@ -310,7 +322,7 @@ fn apply_screen_edit(edit: ScreenEdit, open: bool) {
     js::spawn(Box::new(async move {
         match change_screens(&revision, edit).await {
             Ok(updated) if open => match screen_href(&updated.screen_id) {
-                Ok(href) => window().location().assign(&href),
+                Ok(href) => routing::navigate(&href),
                 Err(error) => status(error),
             },
             Ok(_) => status("Screen list saved in this browser.".into()),
@@ -324,23 +336,25 @@ fn show_workspace_panel(assets: bool) {
     render();
 }
 
-fn render_dashboard() {
+fn render_view(element: react::JSX::Element) {
     if let Some(root) = ROOT.get() {
-        root.render(dashboard::home());
+        root.render(routing::page(element));
     }
 }
 
+fn render_dashboard() {
+    render_view(dashboard::home());
+}
+
 fn render() {
-    if let Some(root) = ROOT.get() {
-        let element = EDITOR.with_borrow(|editor| {
-            if editor.preview {
-                view::prototype(editor)
-            } else {
-                view::editor(editor)
-            }
-        });
-        root.render(element);
-    }
+    let element = EDITOR.with_borrow(|editor| {
+        if editor.preview {
+            view::prototype(editor)
+        } else {
+            view::editor(editor)
+        }
+    });
+    render_view(element);
 }
 
 fn status(message: String) {

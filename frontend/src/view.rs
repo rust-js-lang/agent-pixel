@@ -881,7 +881,7 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
                             if let Some(revision) = revision {
                                 js::spawn(Box::new(async move {
                                     match crate::recover_previous(&revision).await {
-                                        Ok(project) => window().location().assign(&project.href()),
+                                        Ok(project) => crate::routing::navigate(&project.href()),
                                         Err(error) => crate::status(error),
                                     }
                                 }));

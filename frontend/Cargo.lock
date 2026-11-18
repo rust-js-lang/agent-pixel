@@ -6,12 +6,20 @@ version = 4
 name = "agent-pixel-editor"
 version = "0.1.0"
 dependencies = [
+ "agent-pixel-react-router",
  "pixel-geometry",
  "rust-js-builtins",
  "rust-js-react",
  "rust-js-webapi",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "agent-pixel-react-router"
+version = "0.1.0"
+dependencies = [
+ "rust-js-react",
 ]
 
 [[package]]

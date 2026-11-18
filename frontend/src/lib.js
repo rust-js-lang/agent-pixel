@@ -32,11 +32,13 @@ import * as Components from "./components.js";
 import * as Dashboard from "./dashboard.jsx";
 import * as Drafts from "./drafts.js";
 import * as Journey from "./journey.js";
+import * as Routing from "./routing.jsx";
 import * as Screens from "./screens.js";
 import * as View from "./view.jsx";
 import * as Webmcp from "./webmcp.js";
 import * as Zoom from "./zoom.js";
 import {
+  $assign,
   $debugJsonError,
   $displayJsonError,
   $eq,
@@ -125,10 +127,10 @@ export function mount() {
   const node = $unwrap(window.document.getElementById("root"), "Editor root");
   const root$1 = createRoot(node);
   root = root$1;
-  bootstrap(root$1);
+  Routing.start();
 }
 
-async function bootstrap(root) {
+export async function initialize() {
   const result = await Drafts.reloadCache();
   let warning = result.TAG === "Err" ? result._0 : undefined;
   const result$1 = await Screens.reloadCache();
@@ -167,17 +169,51 @@ async function bootstrap(root) {
       })();
     }
   });
+  window.addEventListener("keydown", (event) => {
+    if ($withBorrow(editor, (editor) => editor.document.scene != null && !editor.preview, true)) {
+      Zoom.keyboard(event);
+    }
+  });
   await Projects.initialize();
-  const value = Projects.route();
+  return warning;
+}
+
+export async function openRoute(search, warning) {
+  Webmcp.clearTools();
+  $withBorrowMut(
+    editor,
+    (editor) => {
+      $assign(editor, {
+        document: { revision: 0n },
+        saveFailed: false,
+        refreshPending: false,
+        revision: "",
+        history: { undo: [], redo: [] },
+        server: false,
+        project: { id: "", title: "" },
+        screenCatalog: { revision: "", legacyBaseId: "", screens: [] },
+        screenRemoved: false,
+        poster: false,
+        assetsOpen: false,
+        preview: false,
+        zoom: 0,
+        busy: false,
+        fieldsVersion: 0,
+        status: "",
+        agent: "",
+      });
+    },
+    true,
+  );
+  const params = new URLSearchParams(search);
+  const value = Projects.routeAt(params);
   if (value == null) {
     renderDashboard();
-    (async () => {
-      const value = await Webmcp.registerDashboardTools();
-      if (value.TAG === "Err") {
-        const error = value._0;
-        console.error(error.message);
-      }
-    })();
+    const value = await Webmcp.registerDashboardTools();
+    if (value.TAG === "Err") {
+      const error = value._0;
+      console.error(error.message);
+    }
     return;
   }
   const id = value[0];
@@ -185,16 +221,16 @@ async function bootstrap(root) {
   const project = Projects.find(id);
   if (project == null) {
     const error = Projects.warning();
-    root.render(error != null ? Dashboard.unavailable(error) : Dashboard.missing());
+    renderView(error != null ? Dashboard.unavailable(error) : Dashboard.missing());
     return;
   }
-  const value$2 = Backup.source(project);
-  if (value$2.TAG === "Ok") {
-    const source = value$2._0;
+  const value$1 = Backup.source(project);
+  if (value$1.TAG === "Ok") {
+    const source = value$1._0;
     const catalog = Screens.catalog(project, ProjectSource.screenInfo(source));
-    const requested = server ? catalog.legacyBaseId : Browser.queryValue("screen");
+    const requested = server ? catalog.legacyBaseId : params.get("screen");
     let current =
-      requested != null
+      requested !== null
         ? catalog.screens.find((info) => info.id === requested)
         : catalog.screens[0];
     current =
@@ -202,7 +238,7 @@ async function bootstrap(root) {
         ? current
         : { ...current, action: current.action == null ? current.action : { ...current.action } };
     if (current == null) {
-      root.render(Dashboard.unavailable("This screen is no longer in the project."));
+      renderView(Dashboard.unavailable("This screen is no longer in the project."));
       return;
     }
     $withBorrowMut(
@@ -222,24 +258,20 @@ async function bootstrap(root) {
         editor.screenCatalog = catalog;
         editor.handoff = source.handoff;
         const screen = editor.screen;
-        editor.preview =
-          screen != null && screen.action != null && Browser.workspaceQuery("preview");
+        editor.preview = screen != null && screen.action != null && params.has("preview");
         editor.project = project;
         editor.zoom = Zoom.FIT;
         editor.server = server;
       },
       true,
     );
-    if (!$withBorrow(editor, (editor) => editor.preview, true)) {
-      window.addEventListener("keydown", Zoom.keyboard);
-    }
     status("Opening document…");
     const value = await start(warning);
     if (value.TAG === "Err") {
       status(value._0);
     }
   } else {
-    root.render(Dashboard.unavailable(value$2._0));
+    renderView(Dashboard.unavailable(value$1._0));
     return;
   }
 }
@@ -408,7 +440,7 @@ export function applyScreenEdit(edit, open) {
       if (open) {
         const value$1 = screenHref(value._0.screenId);
         if (value$1.TAG === "Ok") {
-          window.location.assign(value$1._0);
+          Routing.navigate(value$1._0);
         } else {
           status(value$1._0);
         }
@@ -432,22 +464,23 @@ export function showWorkspacePanel(assets) {
   render();
 }
 
-export function renderDashboard() {
+export function renderView(element) {
   if (root != null) {
-    root.render(Dashboard.home());
+    root.render(Routing.page(element));
   }
 }
 
+export function renderDashboard() {
+  renderView(Dashboard.home());
+}
+
 export function render() {
-  const root$1 = root;
-  if (root$1 != null) {
-    const element = $withBorrow(
-      editor,
-      (editor) => (editor.preview ? View.prototype(editor) : View.editor(editor)),
-      true,
-    );
-    root$1.render(element);
-  }
+  const element = $withBorrow(
+    editor,
+    (editor) => (editor.preview ? View.prototype(editor) : View.editor(editor)),
+    true,
+  );
+  renderView(element);
 }
 
 export function status(message) {

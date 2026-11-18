@@ -4,7 +4,8 @@ use pixel_geometry::scene::{Author, Batch};
 use crate::projects;
 use js::{JsError, JsObject, Promise, Unknown, json, promise};
 use serde::Deserialize;
-use std::marker::PhantomData;
+use std::{cell::Cell, marker::PhantomData};
+use webapi::{AbortController, AbortSignal, abort_controller};
 
 struct ModelContext(PhantomData<JsObject>);
 
@@ -20,8 +21,26 @@ fn navigator_context() -> Option<&'static ModelContext> {
 
 impl ModelContext {
     #[cfg_attr(rust_js, rust_js::link_name = "registerTool")]
-    fn register(&self, tool: Tool) -> Result<Option<Promise<()>>, &'static JsError> {
+    fn register(
+        &self,
+        tool: Tool,
+        options: Registration,
+    ) -> Result<Option<Promise<()>>, &'static JsError> {
         unreachable!()
+    }
+}
+
+struct Registration {
+    signal: &'static AbortSignal,
+}
+
+thread_local! {
+    static REGISTERED: Cell<Option<&'static AbortController>> = const { Cell::new(None) };
+}
+
+pub fn clear_tools() {
+    if let Some(controller) = REGISTERED.take() {
+        controller.abort(None);
     }
 }
 
@@ -70,7 +89,7 @@ fn open_screen(input: Option<&Unknown>) -> Result<String, String> {
     let OpenScreen { id } = decode(input, "Provide a screen ID.")?;
     let href = crate::screen_href(&id)?;
     let json = serde_json::json!({ "id": id, "href": href }).to_string();
-    webapi::window_global::location().assign(&href);
+    crate::routing::navigate(&href);
     Ok(json)
 }
 
@@ -373,8 +392,15 @@ async fn register(tools: Vec<Tool>) -> Result<bool, &'static JsError> {
     let Some(context) = document_context().or_else(navigator_context) else {
         return Ok(false);
     };
+    let controller = abort_controller::new();
+    REGISTERED.set(Some(controller));
     for tool in tools {
-        if let Some(registered) = context.register(tool)? {
+        if let Some(registered) = context.register(
+            tool,
+            Registration {
+                signal: controller.signal(),
+            },
+        )? {
             js::settle(registered).await?;
         }
     }
@@ -499,7 +525,7 @@ fn open_project(input: Option<&Unknown>) -> Result<String, String> {
     let OpenProject { id } = decode(input, "Provide a project ID.")?;
     let project = projects::find(&id).ok_or("Project not found in this browser.")?;
     let result = serde_json::to_string(&project).map_err(|error| error.to_string())?;
-    webapi::window_global::location().assign(&project.href());
+    crate::routing::navigate(&project.href());
     Ok(result)
 }
 

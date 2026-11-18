@@ -2,22 +2,12 @@ use js::{JsError, Promise, promise};
 use pixel_geometry::assets::{MAX_IMAGE_BYTES, RasterImage};
 use webapi::{
     BodyInit, EventTargetExt, File, RequestInit, StrOrArrayBuffer, events, file_reader,
-    global::fetch, headers, tags, url_search_params, window_global,
+    global::fetch, headers, tags, window_global,
 };
 
 pub struct HttpResponse {
     pub status: u16,
     pub body: String,
-}
-
-pub fn workspace_query(name: &str) -> bool {
-    let search = window_global::location().search();
-    url_search_params::new(Some(&search)).has(name, None)
-}
-
-pub fn query_value(name: &str) -> Option<String> {
-    let search = window_global::location().search();
-    url_search_params::new(Some(&search)).get(name)
 }
 
 pub fn load_draft(key: &str) -> Result<Option<String>, &'static JsError> {

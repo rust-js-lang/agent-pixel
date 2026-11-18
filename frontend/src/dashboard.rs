@@ -4,7 +4,7 @@ use crate::{
     view,
 };
 use react::{CSSProperties, JSX, jsx, use_state};
-use webapi::{FormDataEntryValue, window_global};
+use webapi::FormDataEntryValue;
 
 fn project_card(project: &Project) -> JSX::Element {
     let source = crate::backup::source(project).ok();
@@ -95,7 +95,7 @@ pub fn BackupPanel(BackupProps { projects }: BackupProps) -> JSX::Element {
                             Err(error) => Err(crate::message(error)),
                         };
                         match result {
-                            Ok(project) => window_global::location().assign(&project.href()),
+                            Ok(project) => crate::routing::navigate(&project.href()),
                             Err(error) => set_error.set(Some(error)),
                         }
                     }));
@@ -129,7 +129,7 @@ pub fn Dashboard() -> JSX::Element {
                         if let Some(FormDataEntryValue::Str(title)) = data.get("name") {
                             js::spawn(Box::new(async move {
                                 match projects::create(&title).await {
-                                    Ok(project) => window_global::location().assign(&project.href()),
+                                    Ok(project) => crate::routing::navigate(&project.href()),
                                     Err(error) => set_error.set(Some(error)),
                                 }
                             }));

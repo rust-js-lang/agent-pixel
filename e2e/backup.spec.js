@@ -34,10 +34,10 @@ test("an agent restores every journey screen, link and linked component in a fre
     const screens = restored.getByRole("navigation", { name: "Journey screens" });
     await expect(screens.getByRole("link", { name: "Set schedule" })).toBeVisible();
     await screens.getByRole("link", { name: "Set schedule" }).click();
+    await expect(restored.locator("#shapes").getByText("Your weekday schedule")).toBeVisible();
     await expect(restored.locator("#agent")).toHaveText("WebMCP tools ready");
     const design = await restored.webmcp.callTool("read_design");
     expect(design.scene).toEqual(placed.scene);
-    await expect(restored.locator("#shapes").getByText("Your weekday schedule")).toBeVisible();
     await screens.getByRole("link", { name: "Play prototype" }).click();
     await restored.getByRole("link", { name: "Review reminder", exact: true }).click();
     await expect(restored.getByRole("heading", { name: "Review" })).toBeVisible();
