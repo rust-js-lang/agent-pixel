@@ -3,6 +3,7 @@
 /** Browser bindings for the experimental WebMCP model context. */
 import { Project, projectSerialize_serialize } from "./projects.js";
 import * as Projects from "./projects.js";
+import * as Backup from "./backup.js";
 import { variantSerialize_serialize } from "./components.js";
 import * as Components from "./components.js";
 import { changeVariant, editDesign, placeComponent, readDesign, renderDashboard } from "./lib.js";
@@ -208,8 +209,61 @@ function openProjectDeserialize_deserialize(json) {
   });
 }
 
+const IMPORT_SCHEMA = `{
+    "type":"object","required":["bundle"],"additionalProperties":false,
+    "properties":{"bundle":{"type":"object","description":"A complete project from export_project"}}
+}`;
+
+function importProjectDeserialize_deserialize(json) {
+  return json.struct(
+    "struct ImportProject",
+    [["bundle", $json.value]],
+    ([bundle]) => ({ bundle }),
+    { deny: true },
+  );
+}
+
+function exportProject(input) {
+  const result = decode(input, "Provide a project ID.", openProjectDeserialize_deserialize);
+  if (result.TAG === "Err") {
+    return result;
+  }
+  const { id } = result._0;
+  return Backup.export(id);
+}
+
+function importProject(input) {
+  const result = decode(input, "Provide a project bundle.", importProjectDeserialize_deserialize);
+  if (result.TAG === "Err") {
+    return result;
+  }
+  const { bundle } = result._0;
+  const result$1 = Backup.import($jsonValueText(bundle, false));
+  if (result$1.TAG === "Err") {
+    return result$1;
+  }
+  const project = result$1._0;
+  renderDashboard();
+  const result$2 = $toJson(project, projectSerialize_serialize, false);
+  return result$2.TAG === "Err" ? { TAG: "Err", _0: $displayJsonError(result$2._0) } : result$2;
+}
+
 export async function registerDashboardTools() {
   return await register([
+    dashboardTool(
+      "export_project",
+      "Export a portable project bundle with screens, links, and component definitions.",
+      OPEN_SCHEMA,
+      true,
+      exportProject,
+    ),
+    dashboardTool(
+      "import_project",
+      "Validate a project bundle and restore it as a new project.",
+      IMPORT_SCHEMA,
+      false,
+      importProject,
+    ),
     dashboardTool(
       "list_projects",
       "List projects in this browser with their stable IDs and titles.",

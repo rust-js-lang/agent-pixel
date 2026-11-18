@@ -107,6 +107,12 @@ fn variant_layers(scene: &Scene, variant: &Variant) -> ComponentVariant {
 }
 
 pub fn component(id: &str) -> Result<ComponentVariant, String> {
+    if let Some(library) = crate::EDITOR.with_borrow(|editor| editor.pinned_library.clone()) {
+        return library
+            .into_iter()
+            .find(|variant| variant.id == id)
+            .ok_or_else(|| "Unknown component variant in this project.".to_string());
+    }
     let variant = variants()
         .iter()
         .find(|variant| variant.id == id)
@@ -115,6 +121,13 @@ pub fn component(id: &str) -> Result<ComponentVariant, String> {
 }
 
 pub fn library() -> Result<Vec<ComponentVariant>, String> {
+    match crate::EDITOR.with_borrow(|editor| editor.pinned_library.clone()) {
+        Some(library) => Ok(library),
+        None => live_library(),
+    }
+}
+
+pub fn live_library() -> Result<Vec<ComponentVariant>, String> {
     let scene = source()?;
     Ok(variants()
         .iter()

@@ -6,16 +6,25 @@ import { Project } from "./projects.js";
 import * as Projects from "./projects.js";
 import * as View from "./view.jsx";
 import { useState } from "react";
+import * as Bundle from "../../core/src/bundle.js";
 import { Scene } from "../../core/src/scene.js";
+import * as Backup from "./backup.js";
+import { message as message$1 } from "./lib.js";
+import { $settle } from "@rust-js/std";
 
 function projectCard(project) {
   const poster = Project.isPoster(project);
   const result = Project.load(project, false);
   const scene$1 = (result.TAG === "Ok" ? result._0 : undefined)?.scene;
+  function fallback() {
+    const result = Backup.saved(project);
+    const bundle = result.TAG === "Ok" ? result._0 : undefined;
+    const screen = bundle != null ? bundle.screens[0] : undefined;
+    return screen?.scene;
+  }
   const scene =
-    scene$1 != null && Scene.validate(scene$1).TAG === "Ok"
-      ? scene$1
-      : Project.initialScene(project);
+    (scene$1 != null && Scene.validate(scene$1).TAG === "Ok" ? scene$1 : fallback()) ??
+    Project.initialScene(project);
   const count = scene.layers.length;
   let label;
   switch (count) {
@@ -62,6 +71,88 @@ function projectCard(project) {
         </span>
       </div>
     </a>
+  );
+}
+
+export function BackupPanel({ projects }) {
+  const [download, setDownload] = useState(undefined);
+  const [error, setError] = useState(undefined);
+  const options = projects.map((project) => (
+    <option key={project.id} value={project.id}>
+      {project.title}
+    </option>
+  ));
+  return (
+    <details className={DASHBOARD.backups}>
+      <summary>Project backup</summary>
+      <form
+        className={DASHBOARD["create-project"]}
+        action={(data) => {
+          const id = data.get("project");
+          if (typeof id === "string") {
+            const value = Backup.export(id);
+            if (value.TAG === "Ok") {
+              setError(undefined);
+              setDownload(`data:application/json;charset=utf-8,${encodeURIComponent(value._0)}`);
+            } else {
+              setDownload(undefined);
+              setError(value._0);
+            }
+          }
+        }}
+      >
+        <label htmlFor="backup-project">Project to export</label>
+        <div className={DASHBOARD["project-controls"]}>
+          <select id="backup-project" name="project">
+            {options}
+          </select>
+          <button type="submit">Prepare backup</button>
+        </div>
+      </form>
+      {download != null && (
+        <a href={download} download="agent-pixel-project.json">
+          Download project bundle
+        </a>
+      )}
+      <form
+        className={DASHBOARD["create-project"]}
+        action={(data) => {
+          const file = data.get("bundle");
+          if (file !== null && typeof file !== "string") {
+            (async () => {
+              if (file.size > Bundle.MAX_BYTES) {
+                setError("Project bundle exceeds 2 MB.");
+                return;
+              }
+              const result = await $settle(file.text());
+              const result$1 =
+                result.TAG === "Err" ? { TAG: "Err", _0: message$1(result._0) } : result;
+              const andThen = result$1.TAG === "Ok" ? Backup.import(result$1._0) : result$1;
+              if (andThen.TAG === "Ok") {
+                location.assign(Project.href(andThen._0));
+              } else {
+                setError(andThen._0);
+              }
+            })();
+          }
+        }}
+      >
+        <label htmlFor="bundle-file">Project bundle to restore</label>
+        <div className={DASHBOARD["project-controls"]}>
+          <input
+            id="bundle-file"
+            name="bundle"
+            type="file"
+            accept=".json,application/json"
+            required
+          />
+          <button type="submit">Restore project</button>
+        </div>
+      </form>
+      <div role="status" className={DASHBOARD["project-status"]}>
+        {error}
+      </div>
+    </details>
   );
 }
 
@@ -113,6 +204,7 @@ export function Dashboard() {
         <div role="status" className={DASHBOARD["project-status"]}>
           {error ?? warning}
         </div>
+        <BackupPanel projects={projects} />
         <section className={DASHBOARD["project-grid"]} aria-label="Projects">
           {cards}
         </section>
@@ -126,10 +218,14 @@ export function home() {
 }
 
 export function missing() {
+  return unavailable("This project could not be found in this browser.");
+}
+
+export function unavailable(message) {
   return (
     <main className={DASHBOARD["project-dashboard"]}>
       <h1>Project unavailable</h1>
-      <p>This project could not be found in this browser.</p>
+      <p>{message}</p>
       <a href="./">Back to projects</a>
     </main>
   );

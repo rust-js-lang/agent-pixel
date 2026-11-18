@@ -1,4 +1,6 @@
 /*! Shared document rules for the worker and native server. */
+pub mod bundle;
+
 pub mod scene;
 
 pub const BOARD_WIDTH: i32 = 480;

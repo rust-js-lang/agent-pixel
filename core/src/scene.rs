@@ -62,7 +62,7 @@ pub struct ComponentInstance {
     pub layer_ids: Vec<String>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct ComponentVariant {
     pub id: String,
     pub family: String,

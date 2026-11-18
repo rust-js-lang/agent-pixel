@@ -1,4 +1,5 @@
 mod artboard_styles;
+mod backup;
 mod browser;
 mod canvas_styles;
 mod dashboard_styles;
@@ -19,6 +20,7 @@ pub use transport::serve_worker;
 
 use js::JsError;
 use pixel_geometry::scene::{ComponentInsert, ComponentSwitch, Design, Document, Patch, Scene};
+use pixel_geometry::{bundle::ScreenInfo, scene::ComponentVariant};
 use projects::Project;
 use react::dom::client::{Root, create_root};
 use std::cell::{Cell, RefCell};
@@ -35,7 +37,12 @@ struct Editor {
     selected: Option<String>,
     server: bool,
     project: Project,
-    screen: Option<&'static journey::Screen>,
+    screen: Option<ScreenInfo>,
+    screens: Vec<ScreenInfo>,
+    seed: Option<Scene>,
+    pinned_library: Option<Vec<ComponentVariant>>,
+    poster: bool,
+    handoff: Option<String>,
     preview: bool,
     zoom: f64,
     busy: bool,
@@ -55,18 +62,19 @@ impl Editor {
     }
 
     fn storage_key(&self) -> String {
-        let base = self.project.storage_key(self.server);
-        match self.screen {
-            Some(screen) if screen.id != journey::SCREENS[0].id => format!("{base}:{}", screen.id),
-            _ => base,
-        }
+        let screen = self.screen.as_ref().filter(|screen| {
+            self.screens
+                .first()
+                .is_some_and(|first| first.id != screen.id)
+        });
+        self.project
+            .screen_key(self.server, screen.map(|screen| screen.id.as_str()))
     }
 
     fn initial_scene(&self) -> Scene {
-        match self.screen {
-            Some(screen) => screen.initial_scene(),
-            None => self.project.initial_scene(),
-        }
+        self.seed
+            .clone()
+            .unwrap_or_else(|| self.project.initial_scene())
     }
 
     fn save_local(&self) -> Result<(), String> {
@@ -95,16 +103,51 @@ pub fn mount() {
         root.render(dashboard::missing());
         return;
     };
-    EDITOR.with_borrow_mut(|editor| {
-        if project.id == journey::PROJECT {
-            editor.screen = Some(
-                browser::query_value("screen")
-                    .as_deref()
-                    .and_then(journey::find)
-                    .unwrap_or(&journey::SCREENS[0]),
-            );
-            editor.preview = browser::workspace_query("preview");
+    let bundle = match backup::saved(&project) {
+        Ok(bundle) => bundle,
+        Err(error) => {
+            root.render(dashboard::unavailable(&error));
+            return;
         }
+    };
+    let screen_id = browser::query_value("screen");
+    EDITOR.with_borrow_mut(|editor| {
+        editor.poster = project.is_poster();
+        if let Some(bundle) = bundle {
+            let index = bundle
+                .screens
+                .iter()
+                .position(|screen| screen_id.as_deref() == Some(screen.info.id.as_str()))
+                .unwrap_or(0);
+            editor.screens = bundle
+                .screens
+                .iter()
+                .map(|screen| screen.info.clone())
+                .collect();
+            editor.screen = Some(editor.screens[index].clone());
+            editor.seed = bundle
+                .screens
+                .into_iter()
+                .nth(index)
+                .map(|screen| screen.scene);
+            editor.pinned_library = Some(bundle.library);
+            editor.poster = bundle.poster;
+            editor.handoff = bundle.handoff;
+        } else if project.id == journey::PROJECT {
+            let screen = screen_id
+                .as_deref()
+                .and_then(journey::find)
+                .unwrap_or(&journey::SCREENS[0]);
+            editor.screens = journey::SCREENS.iter().map(journey::Screen::info).collect();
+            editor.screen = Some(screen.info());
+            editor.seed = Some(screen.initial_scene());
+            editor.handoff = Some(journey::HANDOFF.into());
+        }
+        editor.preview = editor
+            .screen
+            .as_ref()
+            .is_some_and(|screen| screen.action.is_some())
+            && browser::workspace_query("preview");
         editor.project = project;
         editor.zoom = zoom::FIT;
         editor.server = server;

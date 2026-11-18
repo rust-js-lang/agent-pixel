@@ -12,7 +12,6 @@ import SHELL from "./shell.module.css";
 import { BOARD_HEIGHT, BOARD_WIDTH } from "../../core/src/lib.js";
 import { Scene } from "../../core/src/scene.js";
 import * as Components from "./components.js";
-import { Project } from "./projects.js";
 import {
   $borrowMut,
   $byteLen,
@@ -424,33 +423,39 @@ function componentPicker(disabled) {
   );
 }
 
-function journeyNavigation(current, preview) {
-  const screens = Journey.SCREENS.map((screen) => (
+function journeyNavigation(editor, current, preview) {
+  const screens = editor.screens.map((screen) => (
     <a
       key={screen.id}
-      href={Journey.href(screen.id, preview)}
+      href={Journey.href(editor.project.id, screen.id, preview)}
       aria-current={screen.id === current.id ? "step" : "false"}
     >
       {screen.title}
     </a>
   ));
   const name = preview ? "Edit screen" : "Play prototype";
+  const value = preview
+    ? JOURNEY["journey-navigation"]
+    : `${JOURNEY["journey-navigation"]} ${JOURNEY["editor-navigation"]}`;
+  const className = JOURNEY["journey-steps"];
+  const className$1 = JOURNEY["journey-actions"];
+  let className$2;
+  let href;
+  if (current.action != null) {
+    className$2 = JOURNEY["journey-mode"];
+    href = Journey.href(editor.project.id, current.id, !preview);
+  }
   return (
-    <nav
-      className={
-        preview
-          ? JOURNEY["journey-navigation"]
-          : `${JOURNEY["journey-navigation"]} ${JOURNEY["editor-navigation"]}`
-      }
-      aria-label="Journey screens"
-    >
+    <nav className={value} aria-label="Journey screens">
       <h3>Journey screens</h3>
-      <div className={JOURNEY["journey-steps"]}>{screens}</div>
-      <div className={JOURNEY["journey-actions"]}>
-        <a className={JOURNEY["journey-mode"]} href={Journey.href(current.id, !preview)}>
-          {name}
-        </a>
-        <a href={Journey.HANDOFF}>Developer handoff ↗</a>
+      <div className={className}>{screens}</div>
+      <div className={className$1}>
+        {current.action != null && (
+          <a className={className$2} href={href}>
+            {name}
+          </a>
+        )}
+        {editor.handoff != null && <a href={editor.handoff}>Developer handoff ↗</a>}
       </div>
     </nav>
   );
@@ -460,7 +465,9 @@ export function prototype(editor) {
   const screen = $unwrap(editor.screen, "Prototype screen");
   const scene = editor.document.scene;
   const layers = scene?.layers.map(previewLayer);
-  const action = scene != null ? scene.layers.find((layer) => layer.id === "action") : undefined;
+  const action = $unwrap(screen.action, "Prototype action");
+  const source =
+    scene != null ? scene.layers.find((layer) => layer.id === action.layerId) : undefined;
   function map(layer) {
     const placement = {
       left: percent(layer.x, BOARD_WIDTH),
@@ -471,20 +478,20 @@ export function prototype(editor) {
     return (
       <a
         className={JOURNEY["prototype-hotspot"]}
-        href={Journey.href(screen.next, true)}
+        href={Journey.href(editor.project.id, action.next, true)}
         style={placement}
-        aria-label={screen.primary}
+        aria-label={action.label}
       />
     );
   }
-  const hotspot = action != null ? map(action) : undefined;
+  const hotspot = source != null ? map(source) : undefined;
   const className = SHELL.header;
   const className$1 = SHELL.brand;
   const className$2 = JOURNEY["journey-preview"];
   const className$3 = JOURNEY["prototype-canvas"];
   const className$4 = `${ARTBOARD.artboard} ${ARTBOARD.mockup}`;
   const className$5 = JOURNEY["prototype-guide"];
-  const children = journeyNavigation(screen, true);
+  const children = journeyNavigation(editor, screen, true);
   return (
     <>
       <header className={className}>
@@ -503,8 +510,11 @@ export function prototype(editor) {
         </section>
         <div className={className$5}>
           {children}
-          {screen.id === "review" && (
-            <a href={Journey.href("error", true)} className={JOURNEY["simulate-failure"]}>
+          {action.failure != null && (
+            <a
+              href={Journey.href(editor.project.id, action.failure, true)}
+              className={JOURNEY["simulate-failure"]}
+            >
               Simulate save failure
             </a>
           )}
@@ -533,7 +543,7 @@ export function editor(editor) {
   const properties = find != null ? map(find) : undefined;
   const documentTitle = editor.project.title;
   const screen = editor.screen;
-  const poster = Project.isPoster(editor.project);
+  const poster = editor.poster;
   const scale = editor.zoom / 100;
   const sheetStyle = { width: `calc(var(--fit-width) * ${$displayF64(scale)})` };
   const zoomLabel = `${$toFixed(editor.zoom, 0)}%`;
@@ -543,7 +553,10 @@ export function editor(editor) {
   const className$2 = SHELL.crumb;
   const className$3 = EDITOR_STYLES.layout;
   const className$4 = EDITOR_STYLES.eyebrow;
-  const value = screen != null ? journeyNavigation(screen, false) : undefined;
+  const value =
+    screen != null && (screen.action != null || editor.screens.length > 1)
+      ? journeyNavigation(editor, screen, false)
+      : undefined;
   const className$5 = EDITOR_STYLES.layers;
   const className$6 = EDITOR_STYLES.workspace;
   const className$7 = CANVAS["canvas-scroll"];

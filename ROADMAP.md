@@ -6,6 +6,10 @@
 
 The release blockers are recoverable project storage, dependable editing of real multi-screen files, reusable components authored by designers, and a handoff another person can open and inspect. The native Rust service stores a single document over loopback. It demonstrates revision checks and atomic replacement, while the dashboard's project catalog and drafts live in browser storage. The scene is a flat, ordered layer list with a fixed 480 × 600 artboard and a 1,000-layer limit per scene. Canopy is the built-in component library.
 
+### M1 checkpoint
+
+The dashboard and WebMCP can export and restore a versioned project bundle with the current artboards, prototype links, and a pinned component library. Browser drafts still use their existing storage. IndexedDB revisions, interruption and quota recovery, asset support, and undo are still open.
+
 ## Target workflow
 
 A small product team can design a feature from a blank project, using a human and a coding agent together:

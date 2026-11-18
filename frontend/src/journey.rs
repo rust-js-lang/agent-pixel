@@ -1,4 +1,7 @@
-use pixel_geometry::scene::Scene;
+use pixel_geometry::{
+    bundle::{Action, ScreenInfo},
+    scene::Scene,
+};
 
 pub const PROJECT: &str = "current-reminders";
 pub const HANDOFF: &str =
@@ -13,6 +16,19 @@ pub struct Screen {
 }
 
 impl Screen {
+    pub fn info(&self) -> ScreenInfo {
+        ScreenInfo {
+            id: self.id.into(),
+            title: self.title.into(),
+            action: Some(Action {
+                layer_id: "action".into(),
+                label: self.primary.into(),
+                next: self.next.into(),
+                failure: (self.id == "review").then(|| "error".into()),
+            }),
+        }
+    }
+
     pub fn initial_scene(&self) -> Scene {
         serde_json::from_str(self.seed).expect("Valid journey artboard")
     }
@@ -60,7 +76,7 @@ pub fn find(id: &str) -> Option<&'static Screen> {
     SCREENS.iter().find(|screen| screen.id == id)
 }
 
-pub fn href(id: &str, preview: bool) -> String {
+pub fn href(project: &str, id: &str, preview: bool) -> String {
     let mode = if preview { "&preview" } else { "" };
-    format!("?project={PROJECT}&screen={id}{mode}")
+    format!("?project={project}&screen={id}{mode}")
 }

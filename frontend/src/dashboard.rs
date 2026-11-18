@@ -14,6 +14,13 @@ fn project_card(project: &Project) -> JSX::Element {
         .flatten()
         .and_then(|document| document.scene)
         .filter(|scene| scene.validate().is_ok())
+        .or_else(|| {
+            crate::backup::saved(project)
+                .ok()
+                .flatten()
+                .and_then(|bundle| bundle.screens.into_iter().next())
+                .map(|screen| screen.scene)
+        })
         .unwrap_or_else(|| project.initial_scene());
     let count = scene.layers.len();
     let label = match count {
@@ -40,6 +47,62 @@ fn project_card(project: &Project) -> JSX::Element {
                 <span className={DASHBOARD.project_arrow()} aria-hidden="true">"↗"</span>
             </div>
         </a>
+    }
+}
+
+pub struct BackupProps {
+    pub projects: Vec<Project>,
+}
+
+pub fn BackupPanel(BackupProps { projects }: BackupProps) -> JSX::Element {
+    let (download, set_download) = use_state(|| None::<String>);
+    let (error, set_error) = use_state(|| None::<String>);
+    let options = projects.iter().map(|project| jsx! {
+        <option key={project.id.clone()} value={project.id.clone()}>{project.title.clone()}</option>
+    }).collect::<Vec<_>>();
+    jsx! {
+        <details className={DASHBOARD.backups()}>
+            <summary>"Project backup"</summary>
+            <form className={DASHBOARD.create_project()} action={move |data: &webapi::FormData| {
+                if let Some(FormDataEntryValue::Str(id)) = data.get("project") {
+                    match crate::backup::export(&id) {
+                        Ok(json) => {
+                            set_error.set(None);
+                            set_download.set(Some(format!("data:application/json;charset=utf-8,{}", js::encode_uri_component(&json))));
+                        }
+                        Err(error) => { set_download.set(None); set_error.set(Some(error)); }
+                    }
+                }
+            }}>
+                <label htmlFor="backup-project">"Project to export"</label>
+                <div className={DASHBOARD.project_controls()}>
+                    <select id="backup-project" name="project">{options}</select>
+                    <button type="submit">"Prepare backup"</button>
+                </div>
+            </form>
+            {download.as_ref().map(|url| jsx! { <a href={url.clone()} download="agent-pixel-project.json">"Download project bundle"</a> })}
+            <form className={DASHBOARD.create_project()} action={move |data: &webapi::FormData| {
+                if let Some(FormDataEntryValue::File(file)) = data.get("bundle") {
+                    js::spawn(Box::new(async move {
+                        if file.size() > pixel_geometry::bundle::MAX_BYTES as f64 {
+                            set_error.set(Some("Project bundle exceeds 2 MB.".into()));
+                            return;
+                        }
+                        match js::settle(file.text()).await.map_err(crate::message).and_then(|json| crate::backup::import(&json)) {
+                            Ok(project) => window_global::location().assign(&project.href()),
+                            Err(error) => set_error.set(Some(error)),
+                        }
+                    }));
+                }
+            }}>
+                <label htmlFor="bundle-file">"Project bundle to restore"</label>
+                <div className={DASHBOARD.project_controls()}>
+                    <input id="bundle-file" name="bundle" type="file" accept=".json,application/json" required />
+                    <button type="submit">"Restore project"</button>
+                </div>
+            </form>
+            <div role="status" className={DASHBOARD.project_status()}>{error.clone()}</div>
+        </details>
     }
 }
 
@@ -72,6 +135,7 @@ pub fn Dashboard() -> JSX::Element {
                     </form>
                 </div>
                 <div role="status" className={DASHBOARD.project_status()}>{error.clone().or(warning)}</div>
+                <BackupPanel projects={projects} />
                 <section className={DASHBOARD.project_grid()} aria-label="Projects">{cards}</section>
             </main>
         </>
@@ -83,10 +147,14 @@ pub fn home() -> JSX::Element {
 }
 
 pub fn missing() -> JSX::Element {
+    unavailable("This project could not be found in this browser.")
+}
+
+pub fn unavailable(message: &str) -> JSX::Element {
     jsx! {
         <main className={DASHBOARD.project_dashboard()}>
             <h1>"Project unavailable"</h1>
-            <p>"This project could not be found in this browser."</p>
+            <p>{message}</p>
             <a href="./">"Back to projects"</a>
         </main>
     }

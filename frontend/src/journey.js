@@ -8,6 +8,19 @@ export const HANDOFF =
   "https://github.com/rust-js-lang/agent-pixel/blob/main/handoff/CURRENT-REMINDERS.md";
 
 export const Screen = {
+  info(screen) {
+    return {
+      id: screen.id,
+      title: screen.title,
+      action: {
+        layerId: "action",
+        label: screen.primary,
+        next: screen.next,
+        failure: screen.id === "review" ? "error" : undefined,
+      },
+    };
+  },
+
   initialScene(screen) {
     return $unwrapOk(
       $fromJson(screen.seed, sceneDeserialize_deserialize),
@@ -59,8 +72,8 @@ export function find(id) {
   return SCREENS.find((screen) => screen.id === id);
 }
 
-export function href(id, preview) {
+export function href(project, id, preview) {
   const mode = preview ? "&preview" : "";
-  return `?project=${PROJECT}&screen=${id}${mode}`;
+  return `?project=${project}&screen=${id}${mode}`;
 }
 //# sourceMappingURL=journey.js.map

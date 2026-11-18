@@ -89,3 +89,7 @@ Open **Current — Reminder journey** for five editable screens of the off-peak 
 Use **−** and **+** beside the editor toolbar, or use Ctrl/Cmd with **+** or **−**. Click the percentage or press Ctrl/Cmd+0 to return to fit. Trackpad pinch gestures that arrive as a modified wheel event and Ctrl/Cmd+wheel over the canvas zoom the artboard around the pointer. Regular scrolling pans the workspace when the artboard is larger than the viewport.
 
 The dashboard, editor, canvas, shared artboard, journey prototype, and page shell use CSS Modules in `frontend/src`. rust-js checks the class names in each corresponding Rust binding. Bun bundles the scoped rules into `app.css`. The shared site stylesheet contains only document-wide defaults.
+
+## Back up and restore a project
+
+Open **Project backup** on the dashboard to download a versioned JSON bundle or restore one as a new project. On the dashboard, agents can call `export_project` with `{ id }` and `import_project` with `{ bundle }`. Each bundle contains the saved browser artboards, prototype links, and a snapshot of the component library. Restored instances resolve against that snapshot so they keep their appearance in a fresh browser.

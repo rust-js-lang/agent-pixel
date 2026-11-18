@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-const dashboardTools = ["create_project", "list_projects", "open_project"];
+const dashboardTools = ["create_project", "export_project", "import_project", "list_projects", "open_project"];
 const editorTools = ["edit_layer", "insert_component", "list_components", "read_design", "switch_component_variant"];
 
 async function expectTools(page, names) {

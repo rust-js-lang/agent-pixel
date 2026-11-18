@@ -61,3 +61,10 @@
   .project-heading { align-items: stretch; }
   .create-project { flex-basis: 100%; }
 }
+
+.backups { margin: 0 0 22px; }
+.backups summary { width: max-content; cursor: pointer; font-weight: 600; }
+.backups[open] { border: 1px solid #d8dfd5; border-radius: 8px; padding: 12px; }
+.backups form { margin: 12px 0; max-width: 540px; }
+.backups select { min-width: 0; width: 100%; padding: 7px; }
+.backups input[type="file"] { padding: 5px; }

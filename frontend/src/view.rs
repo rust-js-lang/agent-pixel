@@ -304,10 +304,14 @@ fn component_picker(disabled: bool) -> JSX::Element {
     }
 }
 
-fn journey_navigation(current: &journey::Screen, preview: bool) -> JSX::Element {
-    let screens = journey::SCREENS.iter().map(|screen| jsx! {
-        <a key={screen.id} href={journey::href(screen.id, preview)}
-            aria-current={if screen.id == current.id { "step" } else { "false" }}>{screen.title}</a>
+fn journey_navigation(
+    editor: &Editor,
+    current: &pixel_geometry::bundle::ScreenInfo,
+    preview: bool,
+) -> JSX::Element {
+    let screens = editor.screens.iter().map(|screen| jsx! {
+        <a key={screen.id.clone()} href={journey::href(&editor.project.id, &screen.id, preview)}
+            aria-current={if screen.id == current.id { "step" } else { "false" }}>{screen.title.clone()}</a>
     }).collect::<Vec<_>>();
     let name = if preview {
         "Edit screen"
@@ -319,25 +323,31 @@ fn journey_navigation(current: &journey::Screen, preview: bool) -> JSX::Element 
             <h3>"Journey screens"</h3>
             <div className={JOURNEY.journey_steps()}>{screens}</div>
             <div className={JOURNEY.journey_actions()}>
-                <a className={JOURNEY.journey_mode()} href={journey::href(current.id, !preview)}>{name}</a>
-                <a href={journey::HANDOFF}>"Developer handoff ↗"</a>
+                {current.action.is_some().then(|| jsx! { <a className={JOURNEY.journey_mode()} href={journey::href(&editor.project.id, &current.id, !preview)}>{name}</a> })}
+                {editor.handoff.as_ref().map(|url| jsx! { <a href={url.clone()}>"Developer handoff ↗"</a> })}
             </div>
         </nav>
     }
 }
 
 pub(crate) fn prototype(editor: &Editor) -> JSX::Element {
-    let screen = editor.screen.expect("Prototype screen");
+    let screen = editor.screen.as_ref().expect("Prototype screen");
     let scene = editor.document.scene.as_ref();
     let layers = scene.map(|scene| scene.layers.iter().map(preview_layer).collect::<Vec<_>>());
-    let action = scene.and_then(|scene| scene.layers.iter().find(|layer| layer.id == "action"));
-    let hotspot = action.map(|layer| {
+    let action = screen.action.as_ref().expect("Prototype action");
+    let source = scene.and_then(|scene| {
+        scene
+            .layers
+            .iter()
+            .find(|layer| layer.id == action.layer_id)
+    });
+    let hotspot = source.map(|layer| {
         let placement = CSSProperties::new().left(percent(layer.x, BOARD_WIDTH))
             .top(percent(layer.y, BOARD_HEIGHT)).width(percent(layer.width, BOARD_WIDTH))
             .height(percent(layer.height, BOARD_HEIGHT));
         jsx! {
-            <a className={JOURNEY.prototype_hotspot()} href={journey::href(screen.next, true)} style={placement}
-                aria-label={screen.primary} />
+            <a className={JOURNEY.prototype_hotspot()} href={journey::href(&editor.project.id, &action.next, true)} style={placement}
+                aria-label={action.label.clone()} />
         }
     });
     jsx! {
@@ -348,16 +358,16 @@ pub(crate) fn prototype(editor: &Editor) -> JSX::Element {
             </header>
             <main className={JOURNEY.journey_preview()}>
                 <section className={JOURNEY.prototype_canvas()} aria-label="Prototype artboard">
-                    <h1>{screen.title}</h1>
+                    <h1>{screen.title.clone()}</h1>
                     <div id="art" className={format!("{} {}", ARTBOARD.artboard(), ARTBOARD.mockup())}>
                         <div aria-hidden="true">{layers}</div>
                         {hotspot}
                     </div>
                 </section>
                 <div className={JOURNEY.prototype_guide()}>
-                    {journey_navigation(screen, true)}
-                    {(screen.id == "review").then(|| jsx! {
-                        <a href={journey::href("error", true)} className={JOURNEY.simulate_failure()}>"Simulate save failure"</a>
+                    {journey_navigation(editor, screen, true)}
+                    {action.failure.as_ref().map(|failure| jsx! {
+                        <a href={journey::href(&editor.project.id, failure, true)} className={JOURNEY.simulate_failure()}>"Simulate save failure"</a>
                     })}
                 </div>
             </main>
@@ -400,8 +410,8 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
             },
         );
     let document_title = editor.project.title.as_str();
-    let screen = editor.screen;
-    let poster = editor.project.is_poster();
+    let screen = editor.screen.as_ref();
+    let poster = editor.poster;
     let scale = editor.zoom / 100.0;
     let sheet_style = CSSProperties::new().width(format!("calc(var(--fit-width) * {scale})"));
     let zoom_label = format!("{:.0}%", editor.zoom);
@@ -418,13 +428,13 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
                 <aside>
                     <div className={EDITOR_STYLES.eyebrow()}>"DOCUMENT"</div><h2>{document_title}</h2>
                     <p>{if !poster { "Mobile artboard" } else { "Poster composition" }}</p>
-                    {screen.map(|screen| journey_navigation(screen, false))}<hr /><h3>"Layers"</h3><div id="layers" className={EDITOR_STYLES.layers()}>{layer_list}</div>
+                    {screen.filter(|screen| screen.action.is_some() || editor.screens.len() > 1).map(|screen| journey_navigation(editor, screen, false))}<hr /><h3>"Layers"</h3><div id="layers" className={EDITOR_STYLES.layers()}>{layer_list}</div>
                 </aside>
                 <section className={EDITOR_STYLES.workspace()} aria-label="Canvas">
                     <div id="canvas-scroll" className={CANVAS.canvas_scroll()} ref={zoom::attach}>
                         <div className={CANVAS.canvas_stage()}>
                     <div style={sheet_style}>
-                        <div className={EDITOR_STYLES.legend()}>{screen.map_or("ARTBOARD 01", |screen| screen.title)} <span>{format!("{BOARD_WIDTH} × {BOARD_HEIGHT}")}</span></div>
+                        <div className={EDITOR_STYLES.legend()}>{screen.map_or("ARTBOARD 01", |screen| screen.title.as_str())} <span>{format!("{BOARD_WIDTH} × {BOARD_HEIGHT}")}</span></div>
                         <div id="art" className={if poster { ARTBOARD.artboard() } else { format!("{} {}", ARTBOARD.artboard(), ARTBOARD.mockup()) }}>
                             {(poster).then(|| jsx! { <div className={EDITOR_STYLES.imprint()}>"FORM STUDIES" <span>"SERIES 01 / 03"</span></div> })}
                             <div id="shapes" className={EDITOR_STYLES.shapes()}>{shape_list}</div>

@@ -33,6 +33,18 @@ impl Project {
         }
     }
 
+    pub fn bundle_key(&self) -> String {
+        format!("agent-pixel:bundle:{}", self.id)
+    }
+
+    pub fn screen_key(&self, server: bool, screen: Option<&str>) -> String {
+        let base = self.storage_key(server);
+        match screen {
+            Some(id) => format!("{base}:{id}"),
+            None => base,
+        }
+    }
+
     pub fn initial_scene(&self) -> Scene {
         match self.id.as_str() {
             ORBIT => Scene::poster(),
@@ -134,9 +146,20 @@ pub fn route() -> Option<(String, bool)> {
 
 pub fn create(title: &str) -> Result<Project, String> {
     let title = title.trim();
-    if title.is_empty() || title.chars().count() > 80 {
+    if !pixel_geometry::bundle::valid_title(title) {
         return Err("Enter a name between 1 and 80 characters.".into());
     }
+    publish(title, None)
+}
+
+pub fn restore_bundle(
+    bundle: &pixel_geometry::bundle::ProjectBundle,
+    json: &str,
+) -> Result<Project, String> {
+    publish(&bundle.title, Some(json))
+}
+
+fn publish(title: &str, bundle: Option<&str>) -> Result<Project, String> {
     let mut projects =
         saved_projects().map_err(|_| "Could not read your project list.".to_string())?;
     let project = Project {
@@ -145,7 +168,16 @@ pub fn create(title: &str) -> Result<Project, String> {
     };
     projects.push(project.clone());
     let body = serde_json::to_string(&projects).map_err(|error| error.to_string())?;
-    browser::save_draft(CATALOG, Some(&body))
-        .map_err(|_| "Could not save the new project in this browser.".to_string())?;
+    let bundle_key = project.bundle_key();
+    if let Some(json) = bundle {
+        browser::save_draft(&bundle_key, Some(json))
+            .map_err(|_| "Could not store the project bundle in this browser.".to_string())?;
+    }
+    if browser::save_draft(CATALOG, Some(&body)).is_err() {
+        if bundle.is_some() {
+            let _ = browser::save_draft(&bundle_key, None);
+        }
+        return Err("Could not save the new project in this browser.".into());
+    }
     Ok(project)
 }

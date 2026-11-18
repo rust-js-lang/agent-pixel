@@ -7,6 +7,11 @@ use js::JsObject;
 pub struct Styles(PhantomData<JsObject>);
 
 impl Styles {
+    #[cfg_attr(rust_js, rust_js::link_name = "get backups")]
+    pub fn backups(&self) -> String {
+        unreachable!()
+    }
+
     #[cfg_attr(rust_js, rust_js::link_name = "get create-project")]
     pub fn create_project(&self) -> String {
         unreachable!()

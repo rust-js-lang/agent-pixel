@@ -17,6 +17,7 @@ import {
   patchSerialize_serialize,
   sceneSerialize_serialize,
 } from "../../core/src/scene.js";
+import * as Backup from "./backup.js";
 import * as Browser from "./browser.js";
 import * as Components from "./components.js";
 import * as Dashboard from "./dashboard.jsx";
@@ -30,6 +31,8 @@ import {
   $displayJsonError,
   $eq,
   $fromJson,
+  $index,
+  $position,
   $toJson,
   $unwrap,
   $unwrapOk,
@@ -42,6 +45,8 @@ export const editor = {
   document: { revision: 0n },
   server: false,
   project: { id: "", title: "" },
+  screens: [],
+  poster: false,
   preview: false,
   zoom: 0,
   busy: false,
@@ -61,16 +66,24 @@ const Editor = {
   },
 
   storageKey(editor) {
-    const base = Project.storageKey(editor.project, editor.server);
-    return editor.screen != null && editor.screen.id !== Journey.SCREENS[0].id
-      ? `${base}:${editor.screen.id}`
-      : base;
+    function keep(screen) {
+      const first = editor.screens[0];
+      return first != null && first.id !== screen.id;
+    }
+    const screen = editor.screen != null && keep(editor.screen) ? editor.screen : undefined;
+    return Project.screenKey(editor.project, editor.server, screen?.id);
   },
 
   initialScene(editor) {
-    return editor.screen != null
-      ? Screen.initialScene(editor.screen)
-      : Project.initialScene(editor.project);
+    return (
+      (editor.seed == null
+        ? editor.seed
+        : {
+            ...editor.seed,
+            layers: editor.seed.layers.map((item) => ({ ...item })),
+            instances: editor.seed.instances.map((item) => ({ ...item })),
+          }) ?? Project.initialScene(editor.project)
+    );
   },
 
   saveLocal(editor) {
@@ -94,9 +107,9 @@ export function mount() {
   if (value == null) {
     renderDashboard();
     (async () => {
-      const value = await Webmcp.registerDashboardTools();
-      if (value.TAG === "Err") {
-        const error = value._0;
+      const value$1 = await Webmcp.registerDashboardTools();
+      if (value$1.TAG === "Err") {
+        const error = value$1._0;
         console.error(error.message);
       }
     })();
@@ -109,30 +122,52 @@ export function mount() {
     root$1.render(Dashboard.missing());
     return;
   }
-  $withBorrowMut(
-    editor,
-    (editor) => {
-      if (project.id === Journey.PROJECT) {
-        const option = Browser.queryValue("screen");
-        editor.screen = (option != null ? Journey.find(option) : undefined) ?? Journey.SCREENS[0];
-        editor.preview = Browser.workspaceQuery("preview");
-      }
-      editor.project = project;
-      editor.zoom = Zoom.FIT;
-      editor.server = server;
-    },
-    true,
-  );
-  if (!$withBorrow(editor, (editor) => editor.preview, true)) {
-    window.addEventListener("keydown", Zoom.keyboard);
-  }
-  status("Opening document…");
-  (async () => {
-    const value = await start();
-    if (value.TAG === "Err") {
-      status(value._0);
+  const value$1 = Backup.saved(project);
+  if (value$1.TAG === "Ok") {
+    const bundle = value$1._0;
+    const screenId = Browser.queryValue("screen");
+    $withBorrowMut(
+      editor,
+      (editor) => {
+        editor.poster = Project.isPoster(project);
+        if (bundle != null) {
+          const index = $position(bundle.screens, (screen) => screenId === screen.info.id) ?? 0;
+          editor.screens = bundle.screens.map((screen) => screen.info);
+          editor.screen = $index(editor.screens, index);
+          editor.seed = bundle.screens[index]?.scene;
+          editor.pinnedLibrary = bundle.library;
+          editor.poster = bundle.poster;
+          editor.handoff = bundle.handoff;
+        } else if (project.id === Journey.PROJECT) {
+          const screen =
+            (screenId != null ? Journey.find(screenId) : undefined) ?? Journey.SCREENS[0];
+          editor.screens = Journey.SCREENS.map(Screen.info);
+          editor.screen = Screen.info(screen);
+          editor.seed = Screen.initialScene(screen);
+          editor.handoff = Journey.HANDOFF;
+        }
+        const screen = editor.screen;
+        editor.preview =
+          screen != null && screen.action != null && Browser.workspaceQuery("preview");
+        editor.project = project;
+        editor.zoom = Zoom.FIT;
+        editor.server = server;
+      },
+      true,
+    );
+    if (!$withBorrow(editor, (editor) => editor.preview, true)) {
+      window.addEventListener("keydown", Zoom.keyboard);
     }
-  })();
+    status("Opening document…");
+    (async () => {
+      const value = await start();
+      if (value.TAG === "Err") {
+        status(value._0);
+      }
+    })();
+    return;
+  }
+  root$1.render(Dashboard.unavailable(value$1._0));
 }
 
 export function renderDashboard() {

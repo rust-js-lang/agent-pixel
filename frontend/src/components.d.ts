@@ -27,3 +27,11 @@ export function library(): {
     TAG: "Err";
     _0: string;
 };
+
+export function liveLibrary(): {
+    TAG: "Ok";
+    _0: ComponentVariant[];
+} | {
+    TAG: "Err";
+    _0: string;
+};

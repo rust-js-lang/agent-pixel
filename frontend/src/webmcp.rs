@@ -182,8 +182,33 @@ struct OpenProject {
     id: String,
 }
 
+const IMPORT_SCHEMA: &str = r#"{
+    "type":"object","required":["bundle"],"additionalProperties":false,
+    "properties":{"bundle":{"type":"object","description":"A complete project from export_project"}}
+}"#;
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ImportProject {
+    bundle: serde_json::Value,
+}
+
+fn export_project(input: Option<&Unknown>) -> Result<String, String> {
+    let OpenProject { id } = decode(input, "Provide a project ID.")?;
+    crate::backup::export(&id)
+}
+
+fn import_project(input: Option<&Unknown>) -> Result<String, String> {
+    let ImportProject { bundle } = decode(input, "Provide a project bundle.")?;
+    let project = crate::backup::import(&bundle.to_string())?;
+    crate::render_dashboard();
+    serde_json::to_string(&project).map_err(|error| error.to_string())
+}
+
 pub async fn register_dashboard_tools() -> Result<bool, &'static JsError> {
     register(vec![
+        dashboard_tool("export_project", "Export a portable project bundle with screens, links, and component definitions.", OPEN_SCHEMA, true, export_project),
+        dashboard_tool("import_project", "Validate a project bundle and restore it as a new project.", IMPORT_SCHEMA, false, import_project),
         dashboard_tool("list_projects", "List projects in this browser with their stable IDs and titles.", READ_SCHEMA, true, list_projects),
         dashboard_tool("create_project", "Create a named blank project and return its ID. Call open_project to open its editor.", CREATE_SCHEMA, false, create_project),
         dashboard_tool("open_project", "Open a project by ID in this tab. After navigation, discover the editor's WebMCP tools.", OPEN_SCHEMA, false, open_project),
