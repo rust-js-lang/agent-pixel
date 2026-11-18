@@ -234,6 +234,22 @@ async function import$(json) {
     return result;
   }
   const bundle = result._0;
+  for (const screen of bundle.screens) {
+    for (const asset of screen.scene.assets) {
+      const result = await Browser.imageDimensions(asset.image);
+      if (result.TAG === "Err") {
+        return result;
+      }
+    }
+  }
+  for (const variant of bundle.library) {
+    for (const asset of variant.assets) {
+      const result = await Browser.imageDimensions(asset.image);
+      if (result.TAG === "Err") {
+        return result;
+      }
+    }
+  }
   return await Projects.restoreBundle(bundle, json);
 }
 

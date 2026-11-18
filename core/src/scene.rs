@@ -1,4 +1,8 @@
-use crate::{BOARD_HEIGHT, BOARD_WIDTH, fits_board};
+use crate::{
+    BOARD_HEIGHT, BOARD_WIDTH,
+    assets::{ImageAsset, ImagePlacement, MAX_SCENE_IMAGE_BYTES},
+    fits_board,
+};
 use serde::{Deserialize, Serialize};
 
 const VERSION: u8 = 1;
@@ -20,6 +24,8 @@ pub struct Layer {
     pub text: Option<String>,
     #[serde(rename = "fontSize", skip_serializing_if = "Option::is_none")]
     pub font_size: Option<i32>,
+    #[serde(rename = "imageId", skip_serializing_if = "Option::is_none")]
+    pub image_id: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -28,6 +34,8 @@ pub struct Scene {
     pub layers: Vec<Layer>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub instances: Vec<ComponentInstance>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub assets: Vec<ImageAsset>,
 }
 
 #[derive(Clone, Default, PartialEq, Deserialize, Serialize)]
@@ -67,6 +75,8 @@ pub struct ComponentVariant {
     pub id: String,
     pub family: String,
     pub layers: Vec<Layer>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub assets: Vec<ImageAsset>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -126,6 +136,14 @@ fn placed_layers(
         .collect())
 }
 
+fn valid_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 64
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
 impl Layer {
     fn orbit(id: &str, x: i32, y: i32, size: i32, fill: &str) -> Self {
         Self {
@@ -138,17 +156,23 @@ impl Layer {
             fill: fill.into(),
             text: None,
             font_size: None,
+            image_id: None,
         }
     }
 
     fn validate(&self) -> Result<(), &'static str> {
-        if !matches!(self.kind.as_str(), "ellipse" | "rectangle" | "text")
-            || !self
-                .fill
-                .strip_prefix('#')
-                .is_some_and(|hex| hex.len() == 6 && hex.bytes().all(|b| b.is_ascii_hexdigit()))
+        if !matches!(
+            self.kind.as_str(),
+            "ellipse" | "rectangle" | "text" | "image"
+        ) || !self
+            .fill
+            .strip_prefix('#')
+            .is_some_and(|hex| hex.len() == 6 && hex.bytes().all(|b| b.is_ascii_hexdigit()))
         {
             return Err("Choose a shape and a six-digit hex fill.");
+        }
+        if (self.kind == "image") != self.image_id.is_some() {
+            return Err("Image layers need an asset reference.");
         }
         if self.kind == "text" {
             if !self
@@ -165,13 +189,7 @@ impl Layer {
         if !fits_board(self.x, self.y, self.width, self.height) {
             return Err("Keep the entire shape inside the artboard.");
         }
-        if self.id.is_empty()
-            || self.id.len() > 64
-            || !self
-                .id
-                .bytes()
-                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-        {
+        if !valid_id(&self.id) {
             return Err("Invalid layer ID.");
         }
         Ok(())
@@ -184,6 +202,7 @@ impl Scene {
             version: VERSION,
             layers: Vec::new(),
             instances: Vec::new(),
+            assets: Vec::new(),
         }
     }
 
@@ -200,6 +219,7 @@ impl Scene {
                 Layer::orbit("satellite", 305, 312, 74, ORANGE),
             ],
             instances: Vec::new(),
+            assets: Vec::new(),
         }
     }
 
@@ -207,9 +227,28 @@ impl Scene {
         if self.version != VERSION || self.layers.len() > MAX_LAYERS {
             return Err("Unsupported document.");
         }
+        let mut assets = std::collections::HashSet::new();
+        let mut bytes = 0;
+        for asset in &self.assets {
+            if !valid_id(&asset.id) || !assets.insert(&asset.id) {
+                return Err("Invalid or duplicate asset ID.");
+            }
+            asset.image.validate()?;
+            bytes += asset.image.data_url.len();
+            if bytes > MAX_SCENE_IMAGE_BYTES {
+                return Err("Image assets exceed the artboard storage limit.");
+            }
+        }
         let mut ids = std::collections::HashSet::new();
         for layer in &self.layers {
             layer.validate()?;
+            if layer
+                .image_id
+                .as_ref()
+                .is_some_and(|id| !assets.contains(id))
+            {
+                return Err("Image layer refers to a missing asset.");
+            }
             if !ids.insert(&layer.id) {
                 return Err("Duplicate layer ID.");
             }
@@ -230,6 +269,76 @@ impl Scene {
         Ok(())
     }
 
+    pub fn image_for_layer(&self, layer: &Layer) -> Option<&ImageAsset> {
+        let id = layer.image_id.as_ref()?;
+        self.assets.iter().find(|asset| &asset.id == id)
+    }
+
+    fn prune_assets(&mut self) {
+        self.assets.retain(|asset| {
+            self.layers
+                .iter()
+                .any(|layer| layer.image_id.as_ref() == Some(&asset.id))
+        });
+    }
+
+    fn merge_assets(&mut self, assets: &[ImageAsset]) -> Result<(), &'static str> {
+        for asset in assets {
+            if let Some(existing) = self.assets.iter().find(|existing| existing.id == asset.id) {
+                if existing != asset {
+                    return Err("An image asset ID already refers to different data.");
+                }
+            } else {
+                self.assets.push(asset.clone());
+            }
+        }
+        Ok(())
+    }
+
+    fn place_image(
+        &mut self,
+        placement: ImagePlacement,
+        id: String,
+    ) -> Result<String, &'static str> {
+        if self.layers.len() >= MAX_LAYERS {
+            return Err("Layer limit reached.");
+        }
+        placement.image.validate()?;
+        let existing = self
+            .assets
+            .iter()
+            .find(|asset| asset.image == placement.image);
+        let layer = Layer {
+            id: id.clone(),
+            kind: "image".into(),
+            x: placement.x,
+            y: placement.y,
+            width: placement.width,
+            height: placement.height,
+            fill: "#ffffff".into(),
+            text: None,
+            font_size: None,
+            image_id: Some(existing.map_or_else(|| id.clone(), |asset| asset.id.clone())),
+        };
+        layer.validate()?;
+        if existing.is_none() {
+            let bytes = self
+                .assets
+                .iter()
+                .map(|asset| asset.image.data_url.len())
+                .sum::<usize>();
+            if bytes + placement.image.data_url.len() > MAX_SCENE_IMAGE_BYTES {
+                return Err("Image assets exceed the artboard storage limit.");
+            }
+            self.assets.push(ImageAsset {
+                id: id.clone(),
+                image: placement.image,
+            });
+        }
+        self.layers.push(layer);
+        Ok(id)
+    }
+
     pub fn instance_for_layer(&self, id: &str) -> Option<&ComponentInstance> {
         self.instances
             .iter()
@@ -245,6 +354,7 @@ impl Scene {
         let ids: Vec<_> = layers.iter().map(|layer| layer.id.clone()).collect();
         let mut candidate = self.clone();
         candidate.layers.extend(layers);
+        candidate.merge_assets(&insert.variant.assets)?;
         candidate.instances.push(ComponentInstance {
             id,
             variant: insert.variant.id,
@@ -290,6 +400,8 @@ impl Scene {
         instance.layer_ids = layers.iter().map(|layer| layer.id.clone()).collect();
         let selected = instance.layer_ids[0].clone();
         self.layers.splice(position..position, layers);
+        self.merge_assets(&variant.assets)?;
+        self.prune_assets();
         Ok(selected)
     }
 
@@ -341,6 +453,7 @@ impl Scene {
                 .ok_or("Unknown layer.")?;
             self.layers.remove(index);
         }
+        self.prune_assets();
         Ok(())
     }
 
@@ -395,6 +508,7 @@ impl Scene {
                 fill: ORANGE.into(),
                 text: None,
                 font_size: None,
+                image_id: None,
             },
         };
         if let Some(kind) = kind {
@@ -476,6 +590,7 @@ pub struct Batch {
 pub enum Edit {
     Patch { layer: Patch },
     Delete { id: String },
+    PlaceImage { placement: ImagePlacement },
 }
 
 #[derive(Serialize, Deserialize)]
@@ -498,6 +613,15 @@ pub struct Dimensions {
 
 const HISTORY_LIMIT: usize = 32;
 const BATCH_LIMIT: usize = 100;
+
+impl Batch {
+    pub fn validate_size(&self) -> Result<(), &'static str> {
+        if self.edits.is_empty() || self.edits.len() > BATCH_LIMIT {
+            return Err("Submit between 1 and 100 edits.");
+        }
+        Ok(())
+    }
+}
 
 impl Session {
     pub fn new(scene: Scene) -> Self {
@@ -559,14 +683,15 @@ impl Session {
         if batch.revision != self.revision {
             return Err("Design changed. Read its latest revision before applying edits.");
         }
-        if batch.edits.is_empty() || batch.edits.len() > BATCH_LIMIT {
-            return Err("Submit between 1 and 100 edits.");
-        }
+        batch.validate_size()?;
         let mut candidate = self.scene.clone();
         let mut selected = None;
         for (index, edit) in batch.edits.into_iter().enumerate() {
             selected = match edit {
                 Edit::Patch { layer } => Some(candidate.edit(layer, format!("{id}-{index}"))?),
+                Edit::PlaceImage { placement } => {
+                    Some(candidate.place_image(placement, format!("{id}-{index}"))?)
+                }
                 Edit::Delete { id } => {
                     candidate.delete_layer(&id)?;
                     None

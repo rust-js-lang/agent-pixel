@@ -7,6 +7,7 @@ use crate::{
 
 use pixel_geometry::{
     BOARD_HEIGHT, BOARD_WIDTH,
+    assets::ImageAsset,
     scene::{Author, ComponentInstance, Layer, Patch},
 };
 use react::{CSSProperties, JSX, event::PointerEvent, jsx};
@@ -132,16 +133,30 @@ fn layer_style(layer: &Layer) -> CSSProperties {
         }))
 }
 
-pub fn preview_layer(layer: &Layer) -> JSX::Element {
+fn layer_content(layer: &Layer, image: Option<&ImageAsset>) -> JSX::Element {
+    if let Some(asset) = image {
+        let style = CSSProperties::new()
+            .display("block")
+            .width("100%")
+            .height("100%")
+            .object_fit("cover")
+            .pointer_events("none");
+        jsx! { <img src={asset.image.data_url.clone()} alt={asset.image.name.clone()} draggable={false} style={style} /> }
+    } else {
+        jsx! { <>{layer.text.clone()}</> }
+    }
+}
+
+pub fn preview_layer(layer: &Layer, image: Option<&ImageAsset>) -> JSX::Element {
     let class = if layer.kind == "text" {
         format!("{} {}", ARTBOARD.preview_layer(), ARTBOARD.preview_text())
     } else {
         ARTBOARD.preview_layer()
     };
-    jsx! { <div key={layer.id.clone()} className={class} style={layer_style(layer)}>{layer.text.clone()}</div> }
+    jsx! { <div key={layer.id.clone()} className={class} style={layer_style(layer)}>{layer_content(layer, image)}</div> }
 }
 
-fn shape(layer: &Layer, linked: bool) -> JSX::Element {
+fn shape(layer: &Layer, linked: bool, image: Option<&ImageAsset>) -> JSX::Element {
     let captured = layer.clone();
     let id = layer.id.clone();
     let styles = layer_style(layer);
@@ -152,12 +167,12 @@ fn shape(layer: &Layer, linked: bool) -> JSX::Element {
     };
     jsx! {
         <button key={layer.id.clone()} className={class} style={styles}
-            aria-label={format!("Select {}", label(layer))}
+            aria-label={format!("Select {}", image.map_or_else(|| label(layer), |asset| asset.image.name.clone()))}
             onClick={move |_| select(id.clone())}
             onPointerDown={move |event| { if !linked { begin_drag(&captured, event); } }}
             onPointerMove={move_drag}
             onPointerUp={|event| end_drag(event, true)}
-            onPointerCancel={|event| end_drag(event, false)}>{layer.text.clone()}</button>
+            onPointerCancel={|event| end_drag(event, false)}>{layer_content(layer, image)}</button>
     }
 }
 
@@ -212,7 +227,7 @@ fn numeric_field(field: Field, layer: &Layer, version: u32) -> JSX::Element {
     }
 }
 
-fn inspector(layer: &Layer, version: u32) -> JSX::Element {
+fn inspector(layer: &Layer, version: u32, image: Option<&ImageAsset>) -> JSX::Element {
     let id = layer.id.clone();
     let fields = [Field::X, Field::Y, Field::Width, Field::Height]
         .into_iter()
@@ -234,6 +249,7 @@ fn inspector(layer: &Layer, version: u32) -> JSX::Element {
             <h2 id="name">{label(layer)}</h2><hr /><h3>"Geometry"</h3>
             <form id="fields" onSubmit={|event| event.prevent_default()}>{fields}</form>
             {text}
+            {if let Some(asset) = image { jsx! { <p>{asset.image.name.clone()}</p> } } else { jsx! { <>
             <h3>{if layer.kind == "text" { "Color" } else { "Fill" }}</h3>
             <label className={EDITOR_STYLES.color()}>
                 <input type="color" id="fill" value={layer.fill.clone()}
@@ -241,7 +257,7 @@ fn inspector(layer: &Layer, version: u32) -> JSX::Element {
                         id: Some(id.clone()), fill: Some(event.current_target().value()), ..Patch::default()
                     })} />
                 <output id="hex">{layer.fill.clone()}</output>
-            </label><hr />
+            </label></> } }}<hr />
         </>
     }
 }
@@ -333,7 +349,13 @@ fn journey_navigation(
 pub(crate) fn prototype(editor: &Editor) -> JSX::Element {
     let screen = editor.screen.as_ref().expect("Prototype screen");
     let scene = editor.document.scene.as_ref();
-    let layers = scene.map(|scene| scene.layers.iter().map(preview_layer).collect::<Vec<_>>());
+    let layers = scene.map(|scene| {
+        scene
+            .layers
+            .iter()
+            .map(|layer| preview_layer(layer, scene.image_for_layer(layer)))
+            .collect::<Vec<_>>()
+    });
     let action = screen.action.as_ref().expect("Prototype action");
     let source = scene.and_then(|scene| {
         scene
@@ -392,6 +414,7 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
                 scene
                     .and_then(|scene| scene.instance_for_layer(&layer.id))
                     .is_some(),
+                scene.and_then(|scene| scene.image_for_layer(layer)),
             )
         })
         .collect::<Vec<_>>();
@@ -406,7 +429,11 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
         .map(
             |layer| match scene.and_then(|scene| scene.instance_for_layer(&layer.id)) {
                 Some(instance) => instance_inspector(instance),
-                None => inspector(layer, editor.fields_version),
+                None => inspector(
+                    layer,
+                    editor.fields_version,
+                    scene.and_then(|scene| scene.image_for_layer(layer)),
+                ),
             },
         );
     let document_title = editor.project.title.as_str();
@@ -461,6 +488,15 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
                 </section>
                 <aside className={EDITOR_STYLES.properties()}>
                     <div className={EDITOR_STYLES.eyebrow()}>"INSPECTOR"</div>
+                    <p><label>"Place image"
+                        <input type="file" accept="image/png,image/jpeg,image/webp" disabled={disabled} onChange={|event| {
+                            let input = event.current_target();
+                            if let Some(file) = input.files().and_then(|files| files.item(0)) {
+                                input.set_value("");
+                                crate::add_image(file);
+                            }
+                        }} />
+                    </label></p>
                     {component_picker(disabled)}
                     {properties}
                     {editor.history.undo.last().map(|entry| jsx! {

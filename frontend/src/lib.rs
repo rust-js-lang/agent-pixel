@@ -25,7 +25,7 @@ use js::JsError;
 use pixel_geometry::scene::{
     Author, Batch, ComponentInsert, ComponentSwitch, Design, Document, Edit, History, Patch, Scene,
 };
-use pixel_geometry::{bundle::ScreenInfo, scene::ComponentVariant};
+use pixel_geometry::{assets::ImagePlacement, bundle::ScreenInfo, scene::ComponentVariant};
 use projects::Project;
 use react::dom::client::{Root, create_root};
 use std::cell::{Cell, RefCell};
@@ -324,6 +324,51 @@ async fn read_design() -> Result<String, String> {
 
 async fn edit_design(json: String, author: Author) -> Result<String, String> {
     change_design("edit", &json, author).await
+}
+
+async fn apply_batch(batch: Batch, author: Author) -> Result<String, String> {
+    batch.validate_size()?;
+    for edit in &batch.edits {
+        if let Edit::PlaceImage { placement } = edit {
+            browser::image_dimensions(&placement.image).await?;
+        }
+    }
+    commit_batch(batch, author).await
+}
+
+async fn commit_batch(batch: Batch, author: Author) -> Result<String, String> {
+    let json = serde_json::to_string(&batch).map_err(|error| error.to_string())?;
+    change_design("batch", &json, author).await
+}
+
+fn add_image(file: &'static webapi::File) {
+    let revision = EDITOR.with_borrow(|editor| editor.revision.clone());
+    js::spawn(Box::new(async move {
+        let result = async {
+            let image = browser::read_image(file).await?;
+            let (width, height) = browser::image_dimensions(&image).await?;
+            let scale = (160.0 / width.max(height)).min(1.0);
+            let placement = ImagePlacement {
+                image,
+                x: 40,
+                y: 40,
+                width: (width * scale).round().max(1.0) as i32,
+                height: (height * scale).round().max(1.0) as i32,
+            };
+            commit_batch(
+                Batch {
+                    revision,
+                    edits: vec![Edit::PlaceImage { placement }],
+                },
+                Author::Person,
+            )
+            .await
+        }
+        .await;
+        if let Err(error) = result {
+            status(error);
+        }
+    }));
 }
 
 async fn place_component(id: &str, x: i32, y: i32, author: Author) -> Result<String, String> {

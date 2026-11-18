@@ -98,7 +98,13 @@ Open **Project backup** on the dashboard to download a versioned JSON bundle or 
 
 Use **Undo**, **Redo**, and **Delete layer** in the editor. Deleting a linked component layer removes the whole instance. The inspector labels the last committed change as yours or the agent's.
 
-For multi-layer agent edits, call `read_design` for its current revision and then `apply_edits` with `{ revision, edits }`. Each edit is `{ op: "patch", layer }` using the fields accepted by `edit_layer`, or `{ op: "delete", id }`. A successful batch counts as one undo step. Use `undo_edit` and `redo_edit` with the latest revision. The worker keeps the last 32 transactions in the current editor session.
+For multi-layer agent edits, call `read_design` for its current revision and then `apply_edits` with `{ revision, edits }`. Each edit is `{ op: "patch", layer }` using the fields accepted by `edit_layer`, or `{ op: "delete", id }`. To place an image in the same transaction, use `{ op: "place_image", placement: { image: { name, dataUrl }, x, y, width, height } }`. A successful batch counts as one undo step. Use `undo_edit` and `redo_edit` with the latest revision. The worker keeps the last 32 transactions in the current editor session.
+
+## Image assets
+
+Use **Place image** in the inspector to upload PNG, JPEG, or WebP. Agents supply the same formats as base64 data URLs in `apply_edits`. Images must be at most 512 KiB and 16 megapixels each. An artboard holds up to 1.2 MB of encoded image data, and a portable bundle holds up to 2 MB total.
+
+Each image layer references an asset stored with its scene revision. Repeated placements of the same named file reuse that asset within the artboard. Undo, checkpoint recovery, and portable backups keep the asset data needed to reopen the design.
 
 ## Durable browser drafts
 

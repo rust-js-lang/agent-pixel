@@ -89,7 +89,7 @@ fn source() -> Result<Scene, String> {
 }
 
 fn variant_layers(scene: &Scene, variant: &Variant) -> ComponentVariant {
-    let layers = scene
+    let layers: Vec<_> = scene
         .layers
         .iter()
         .filter(|layer| {
@@ -99,10 +99,21 @@ fn variant_layers(scene: &Scene, variant: &Variant) -> ComponentVariant {
         })
         .cloned()
         .collect();
+    let assets = scene
+        .assets
+        .iter()
+        .filter(|asset| {
+            layers
+                .iter()
+                .any(|layer| layer.image_id.as_ref() == Some(&asset.id))
+        })
+        .cloned()
+        .collect();
     ComponentVariant {
         id: variant.id.into(),
         family: variant.family.into(),
         layers,
+        assets,
     }
 }
 

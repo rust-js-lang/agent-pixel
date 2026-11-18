@@ -57,10 +57,12 @@ function variantLayers(scene, variant) {
       );
     })
     .map((item) => ({ ...item }));
+  const assets = scene.assets.filter((asset) => layers.some((layer) => layer.imageId === asset.id));
   return {
     id: variant.id,
     family: variant.family,
     layers,
+    assets,
   };
 }
 
@@ -73,6 +75,7 @@ export function component(id) {
         : editor.pinnedLibrary.map((item) => ({
             ...item,
             layers: item.layers.map((item) => ({ ...item })),
+            assets: item.assets.slice(),
           })),
     true,
   );
@@ -105,6 +108,7 @@ export function library() {
         : editor.pinnedLibrary.map((item) => ({
             ...item,
             layers: item.layers.map((item) => ({ ...item })),
+            assets: item.assets.slice(),
           })),
     true,
   );

@@ -34,8 +34,10 @@ import {
   iterator_map,
   iterator_rev,
 } from "@rust-js/std";
+import { MAX_SCENE_IMAGE_BYTES, RasterImage } from "../../core/src/assets.js";
 import { BOARD_HEIGHT, BOARD_WIDTH, fitsBoard } from "../../core/src/lib.js";
 import {
+  Batch,
   Scene as Scene$1,
   Session as Session$1,
   authorDeserialize_deserialize,
@@ -99,6 +101,7 @@ const Session = {
             ...session.scene,
             layers: session.scene.layers.map((item) => ({ ...item })),
             instances: session.scene.instances.map((item) => ({ ...item })),
+            assets: session.scene.assets.slice(),
           };
           const edit = Scene$1.edit(candidate, patch, id);
           if (edit.TAG === "Err") {
@@ -119,6 +122,7 @@ const Session = {
             ...session.scene,
             layers: session.scene.layers.map((item) => ({ ...item })),
             instances: session.scene.instances.map((item) => ({ ...item })),
+            assets: session.scene.assets.slice(),
           };
           const insertComponent = Scene.insertComponent(candidate, component, id);
           if (insertComponent.TAG === "Err") {
@@ -143,6 +147,7 @@ const Session = {
             ...session.scene,
             layers: session.scene.layers.map((item) => ({ ...item })),
             instances: session.scene.instances.map((item) => ({ ...item })),
+            assets: session.scene.assets.slice(),
           };
           const result$2 = Scene.switchComponent(candidate, switch$);
           if (result$2.TAG === "Err") {
@@ -163,6 +168,7 @@ const Session = {
             ...session.scene,
             layers: session.scene.layers.map((item) => ({ ...item })),
             instances: session.scene.instances.map((item) => ({ ...item })),
+            assets: session.scene.assets.slice(),
           };
           const result$1 = Scene$1.refreshComponents(candidate, variants);
           if (result$1.TAG === "Err") {
@@ -206,11 +212,12 @@ const Session = {
     const props = { ...session.scene };
     const layers = session.scene.layers.map((item) => ({ ...item }));
     const instances = session.scene.instances.map((item) => ({ ...item }));
+    const assets = session.scene.assets.slice();
     const value = session.revision;
     const collect = $foldToArray(iterator_map($iter(session.undo), (entry) => entry.entry));
     const design = {
       board: { width: BOARD_WIDTH, height: BOARD_HEIGHT },
-      scene: { ...props, layers, instances },
+      scene: { ...props, layers, instances, assets },
       revision: value,
       history: {
         undo: collect,
@@ -248,6 +255,7 @@ const Session = {
       ...scene,
       layers: scene.layers.map((item) => ({ ...item })),
       instances: scene.instances.map((item) => ({ ...item })),
+      assets: scene.assets.slice(),
     };
     if (candidate.instances.length !== 0) {
       const result = Scene$1.refreshComponents(candidate, session.library);
@@ -264,52 +272,61 @@ const Session = {
   applyBatch(session, batch, id, author) {
     let tmp = true;
     let result;
-    bb53: {
-      if (batch.revision !== session.revision) {
+    bb62: {
+      if (batch.revision === session.revision) {
+        const result$1 = Batch.validateSize(batch);
+        if (result$1.TAG === "Err") {
+          result = result$1;
+        } else {
+          const candidate = {
+            ...session.scene,
+            layers: session.scene.layers.map((item) => ({ ...item })),
+            instances: session.scene.instances.map((item) => ({ ...item })),
+            assets: session.scene.assets.slice(),
+          };
+          let selected;
+          tmp = false;
+          for (const [index, edit] of iterator_enumerate($iter(batch.edits))) {
+            let tmp;
+            bb44: {
+              if (edit.TAG === "Patch") {
+                const layer = edit.layer;
+                const value = Scene$1.edit(candidate, layer, `${id}-${index}`);
+                if (value.TAG !== "Err") {
+                  tmp = value._0;
+                  break bb44;
+                }
+                result = value;
+              } else if (edit.TAG === "PlaceImage") {
+                const placement = edit.placement;
+                const placeImage = Scene.placeImage(candidate, placement, `${id}-${index}`);
+                if (placeImage.TAG !== "Err") {
+                  tmp = placeImage._0;
+                  break bb44;
+                }
+                result = placeImage;
+              } else {
+                const id = edit.id;
+                const result$1 = Scene.deleteLayer(candidate, id);
+                if (result$1.TAG === "Err") {
+                  result = result$1;
+                } else {
+                  tmp = undefined;
+                  break bb44;
+                }
+              }
+              break bb62;
+            }
+            selected = tmp;
+          }
+          Session.commit(session, candidate, id, "Edit layers", author);
+          return { TAG: "Ok", _0: selected };
+        }
+      } else {
         result = {
           TAG: "Err",
           _0: "Design changed. Read its latest revision before applying edits.",
         };
-      } else {
-        if (batch.edits.length !== 0) {
-          if (batch.edits.length <= 100) {
-            const candidate = {
-              ...session.scene,
-              layers: session.scene.layers.map((item) => ({ ...item })),
-              instances: session.scene.instances.map((item) => ({ ...item })),
-            };
-            let selected;
-            tmp = false;
-            for (const [index, edit] of iterator_enumerate($iter(batch.edits))) {
-              let tmp;
-              bb35: {
-                if (edit.TAG === "Patch") {
-                  const layer = edit.layer;
-                  const value = Scene$1.edit(candidate, layer, `${id}-${index}`);
-                  if (value.TAG !== "Err") {
-                    tmp = value._0;
-                    break bb35;
-                  }
-                  result = value;
-                } else {
-                  const id = edit.id;
-                  const result$1 = Scene.deleteLayer(candidate, id);
-                  if (result$1.TAG === "Err") {
-                    result = result$1;
-                  } else {
-                    tmp = undefined;
-                    break bb35;
-                  }
-                }
-                break bb53;
-              }
-              selected = tmp;
-            }
-            Session.commit(session, candidate, id, "Edit layers", author);
-            return { TAG: "Ok", _0: selected };
-          }
-        }
-        result = { TAG: "Err", _0: "Submit between 1 and 100 edits." };
       }
     }
     return result;
@@ -339,10 +356,15 @@ const Scene = {
       ...scene,
       layers: scene.layers.map((item) => ({ ...item })),
       instances: scene.instances.map((item) => ({ ...item })),
+      assets: scene.assets.slice(),
     };
     const result$1 = candidate.layers;
     for (let i = 0; i < layers.length; i++) {
       result$1.push(layers[i]);
+    }
+    const result$2 = Scene.mergeAssets(candidate, insert.variant.assets);
+    if (result$2.TAG === "Err") {
+      return result$2;
     }
     candidate.instances.push({
       id,
@@ -352,9 +374,9 @@ const Scene = {
       y: insert.y,
       layerIds: ids,
     });
-    const result$2 = Scene$1.validate(candidate);
-    if (result$2.TAG === "Err") {
-      return result$2;
+    const result$3 = Scene$1.validate(candidate);
+    if (result$3.TAG === "Err") {
+      return result$3;
     }
     $assign(scene, candidate);
     return { TAG: "Ok", _0: ids };
@@ -373,6 +395,7 @@ const Scene = {
       ...scene,
       layers: scene.layers.map((item) => ({ ...item })),
       instances: scene.instances.map((item) => ({ ...item })),
+      assets: scene.assets.slice(),
     };
     const result = Scene.replaceInstance(candidate, value, switch$.variant, false);
     if (result.TAG === "Err") {
@@ -386,10 +409,59 @@ const Scene = {
     $assign(scene, candidate);
     return { TAG: "Ok", _0: selected };
   },
+  placeImage(scene, placement, id) {
+    let tmp = true;
+    let result;
+    if (scene.layers.length < 1000) {
+      const result$1 = RasterImage.validate(placement.image);
+      if (result$1.TAG === "Err") {
+        result = result$1;
+      } else {
+        const existing = scene.assets.find((asset) => $eq(asset.image, placement.image));
+        const layer = {
+          id,
+          kind: "image",
+          x: placement.x,
+          y: placement.y,
+          width: placement.width,
+          height: placement.height,
+          fill: "#ffffff",
+          imageId: existing != null ? existing.id : id,
+        };
+        const result$1 = Layer.validate(layer);
+        bb32: {
+          if (result$1.TAG !== "Err") {
+            if (existing == null) {
+              const bytes = iterator_map($iter(scene.assets), (asset) =>
+                $byteLen(asset.image.dataUrl),
+              ).reduce((a, b) => (a + b) >>> 0, 0);
+              if ((bytes + $byteLen(placement.image.dataUrl)) >>> 0 > MAX_SCENE_IMAGE_BYTES) {
+                result = { TAG: "Err", _0: "Image assets exceed the artboard storage limit." };
+                break bb32;
+              }
+              tmp = false;
+              scene.assets.push({ id, image: placement.image });
+            }
+            scene.layers.push(layer);
+            result = { TAG: "Ok", _0: id };
+            return result;
+          }
+          result = result$1;
+        }
+      }
+    } else {
+      result = { TAG: "Err", _0: "Layer limit reached." };
+    }
+    return result;
+  },
   deleteLayer(scene, id) {
     const index = scene.instances.findIndex((instance) => instance.layerIds.includes(id));
     if (index !== -1) {
-      const instance = scene.instances.splice(index, 1)[0];
+      const result = scene.instances;
+      if (index >= result.length) {
+        $removeOutOfBounds(result, index);
+      }
+      const instance = result.splice(index, 1)[0];
       $retain(scene.layers, (layer) => !instance.layerIds.includes(layer.id));
     } else {
       const position = $position(scene.layers, (layer) => layer.id === id);
@@ -403,6 +475,21 @@ const Scene = {
         $removeOutOfBounds(result$1, result._0);
       }
       result$1.splice(result._0, 1);
+    }
+    Scene.pruneAssets(scene);
+    return { TAG: "Ok" };
+  },
+  mergeAssets(scene, assets) {
+    for (let i = 0; i < assets.length; i++) {
+      const asset = assets[i];
+      const existing = scene.assets.find((existing) => existing.id === asset.id);
+      if (existing != null) {
+        if (!$eq(existing, asset)) {
+          return { TAG: "Err", _0: "An image asset ID already refers to different data." };
+        }
+      } else {
+        scene.assets.push(asset);
+      }
     }
     return { TAG: "Ok" };
   },
@@ -432,13 +519,26 @@ const Scene = {
     instance.layerIds = $foldToArray(iterator_map($iter(layers), (layer) => layer.id));
     const selected = $index(instance.layerIds, 0);
     $splice(scene.layers, value, value, layers);
+    const result$2 = Scene.mergeAssets(scene, variant.assets);
+    if (result$2.TAG === "Err") {
+      return result$2;
+    }
+    Scene.pruneAssets(scene);
     return { TAG: "Ok", _0: selected };
+  },
+  pruneAssets(scene) {
+    $retain(scene.assets, (asset) => scene.layers.some((layer) => layer.imageId === asset.id));
   },
 };
 
 const Layer = {
   validate(layer) {
-    if (layer.kind === "ellipse" || layer.kind === "rectangle" || layer.kind === "text") {
+    if (
+      layer.kind === "ellipse" ||
+      layer.kind === "rectangle" ||
+      layer.kind === "text" ||
+      layer.kind === "image"
+    ) {
       const stripPrefix = $stripPrefix(layer.fill, "#");
       if (
         stripPrefix != null &&
@@ -447,11 +547,14 @@ const Layer = {
           (b) => (b >= 48 && b <= 57) || (b >= 65 && b <= 70) || (b >= 97 && b <= 102),
         )
       ) {
-        bb28: {
+        if ((layer.kind === "image") !== (layer.imageId != null)) {
+          return { TAG: "Err", _0: "Image layers need an asset reference." };
+        }
+        bb34: {
           if (layer.kind === "text") {
             if (layer.text != null && $trim(layer.text) !== "" && $byteLen(layer.text) <= 512) {
               if (layer.fontSize != null && 8 <= layer.fontSize && layer.fontSize <= 96) {
-                break bb28;
+                break bb34;
               }
             }
             return { TAG: "Err", _0: "Text needs content and a font size from 8 to 96." };
@@ -463,18 +566,10 @@ const Layer = {
         if (!fitsBoard(layer.x, layer.y, layer.width, layer.height)) {
           return { TAG: "Err", _0: "Keep the entire shape inside the artboard." };
         }
-        if (layer.id !== "") {
-          if (!($byteLen(layer.id) > 64)) {
-            if (
-              $utf8Bytes(layer.id).every(
-                (b) => (b >= 97 && b <= 122) || (b >= 48 && b <= 57) || b === 45,
-              )
-            ) {
-              return { TAG: "Ok" };
-            }
-          }
+        if (!validId(layer.id)) {
+          return { TAG: "Err", _0: "Invalid layer ID." };
         }
-        return { TAG: "Err", _0: "Invalid layer ID." };
+        return { TAG: "Ok" };
       }
     }
     return { TAG: "Err", _0: "Choose a shape and a six-digit hex fill." };
@@ -688,5 +783,13 @@ function placedLayers(variant, id, x, y, fit) {
       ),
     ),
   };
+}
+
+function validId(id) {
+  return (
+    id !== "" &&
+    $byteLen(id) <= 64 &&
+    $utf8Bytes(id).every((b) => (b >= 97 && b <= 122) || (b >= 48 && b <= 57) || b === 45)
+  );
 }
 //# sourceMappingURL=transport.js.map

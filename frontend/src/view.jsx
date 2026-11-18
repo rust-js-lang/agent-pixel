@@ -3,6 +3,7 @@
 import * as Journey from "./journey.js";
 import {
   Editor,
+  addImage,
   changeVariant,
   deleteSelection,
   edit,
@@ -159,19 +160,34 @@ function layerStyle(layer) {
   };
 }
 
-export function previewLayer(layer) {
+function layerContent(layer, image) {
+  if (image != null) {
+    const style = {
+      display: "block",
+      width: "100%",
+      height: "100%",
+      objectFit: "cover",
+      pointerEvents: "none",
+    };
+    return <img src={image.image.dataUrl} alt={image.image.name} draggable={false} style={style} />;
+  } else {
+    return <>{layer.text}</>;
+  }
+}
+
+export function previewLayer(layer, image) {
   const class$ =
     layer.kind === "text"
       ? `${ARTBOARD["preview-layer"]} ${ARTBOARD["preview-text"]}`
       : ARTBOARD["preview-layer"];
   return (
     <div key={layer.id} className={class$} style={layerStyle(layer)}>
-      {layer.text}
+      {layerContent(layer, image)}
     </div>
   );
 }
 
-function shape(layer, linked) {
+function shape(layer, linked, image) {
   const captured = { ...layer };
   const id = layer.id;
   const styles = layerStyle(layer);
@@ -184,7 +200,7 @@ function shape(layer, linked) {
       key={layer.id}
       className={class$}
       style={styles}
-      aria-label={`Select ${label(layer)}`}
+      aria-label={`Select ${image != null ? image.image.name : label(layer)}`}
       onClick={() => select(id)}
       onPointerDown={(event) => {
         if (!linked) {
@@ -195,7 +211,7 @@ function shape(layer, linked) {
       onPointerUp={(event) => endDrag(event, true)}
       onPointerCancel={(event) => endDrag(event, false)}
     >
-      {layer.text}
+      {layerContent(layer, image)}
     </button>
   );
 }
@@ -289,7 +305,7 @@ function numericField(field, layer, version) {
   );
 }
 
-function inspector(layer, version) {
+function inspector(layer, version, image) {
   const id = layer.id;
   const fields = ["X", "Y", "Width", "Height"].map((field) => numericField(field, layer, version));
   const textId = layer.id;
@@ -317,21 +333,27 @@ function inspector(layer, version) {
         {fields}
       </form>
       {text}
-      <h3>{layer.kind === "text" ? "Color" : "Fill"}</h3>
-      <label className={EDITOR_STYLES.color}>
-        <input
-          type="color"
-          id="fill"
-          value={layer.fill}
-          onChange={(event) =>
-            edit({
-              id,
-              fill: event.currentTarget.value,
-            })
-          }
-        />
-        <output id="hex">{layer.fill}</output>
-      </label>
+      {image != null ? (
+        <p>{image.image.name}</p>
+      ) : (
+        <>
+          <h3>{layer.kind === "text" ? "Color" : "Fill"}</h3>
+          <label className={EDITOR_STYLES.color}>
+            <input
+              type="color"
+              id="fill"
+              value={layer.fill}
+              onChange={(event) =>
+                edit({
+                  id,
+                  fill: event.currentTarget.value,
+                })
+              }
+            />
+            <output id="hex">{layer.fill}</output>
+          </label>
+        </>
+      )}
       <hr />
     </>
   );
@@ -480,11 +502,13 @@ function journeyNavigation(editor, current, preview) {
 export function prototype(editor) {
   const screen = $unwrap(editor.screen, "Prototype screen");
   const scene = editor.document.scene;
-  const layers = scene?.layers.map(previewLayer);
+  const map = (scene) =>
+    scene.layers.map((layer) => previewLayer(layer, Scene.imageForLayer(scene, layer)));
+  const layers = scene != null ? map(scene) : undefined;
   const action = $unwrap(screen.action, "Prototype action");
   const source =
     scene != null ? scene.layers.find((layer) => layer.id === action.layerId) : undefined;
-  function map(layer) {
+  function map$1(layer) {
     const placement = {
       left: percent(layer.x, BOARD_WIDTH),
       top: percent(layer.y, BOARD_HEIGHT),
@@ -500,7 +524,7 @@ export function prototype(editor) {
       />
     );
   }
-  const hotspot = source != null ? map(source) : undefined;
+  const hotspot = source != null ? map$1(source) : undefined;
   const className = SHELL.header;
   const className$1 = SHELL.brand;
   const className$2 = JOURNEY["journey-preview"];
@@ -548,13 +572,23 @@ export function editor(editor) {
   const selected = editor.selected;
   const scene = editor.document.scene;
   const shapeList = layers.map((layer) =>
-    shape(layer, (scene != null ? Scene.instanceForLayer(scene, layer.id) : undefined) != null),
+    shape(
+      layer,
+      (scene != null ? Scene.instanceForLayer(scene, layer.id) : undefined) != null,
+      scene != null ? Scene.imageForLayer(scene, layer) : undefined,
+    ),
   );
   const layerList = layers.toReversed().map((layer) => layerButton(layer, selected));
   const find = layers.find((layer) => layer.id === selected);
   function map(layer) {
     const instance = scene != null ? Scene.instanceForLayer(scene, layer.id) : undefined;
-    return instance != null ? instanceInspector(instance) : inspector(layer, editor.fieldsVersion);
+    return instance != null
+      ? instanceInspector(instance)
+      : inspector(
+          layer,
+          editor.fieldsVersion,
+          scene != null ? Scene.imageForLayer(scene, layer) : undefined,
+        );
   }
   const properties = find != null ? map(find) : undefined;
   const documentTitle = editor.project.title;
@@ -608,6 +642,43 @@ export function editor(editor) {
     : undefined;
   const href = editor.recovery != null ? Project.href(editor.recovery) : undefined;
   const value$4 = Drafts.hasPrevious(Editor.storageKey(editor)) && !editor.busy;
+  const className$18 = EDITOR_STYLES.agent;
+  const children$2 = editor.saveFailed && editor.recovery == null && (
+    <>
+      <p>Download a copy before leaving to keep your unsaved edits.</p>
+      <button
+        type="button"
+        disabled={editor.busy}
+        onClick={() => {
+          const value = Backup.downloadUnsaved();
+          if (value.TAG === "Err") {
+            status(value._0);
+          }
+        }}
+      >
+        Download unsaved project
+      </button>
+      <button
+        type="button"
+        disabled={editor.busy}
+        onClick={async () => {
+          await retrySave();
+        }}
+      >
+        Retry draft save
+      </button>
+    </>
+  );
+  const children$3 = editor.server && (
+    <div id="server" className={EDITOR_STYLES.server}>
+      <button disabled={disabled} onClick={() => syncToServer(false)}>
+        Save to server
+      </button>
+      <button disabled={disabled} onClick={() => syncToServer(true)}>
+        Load server copy
+      </button>
+    </div>
+  );
   return (
     <>
       <header className={className}>
@@ -730,6 +801,24 @@ export function editor(editor) {
         </section>
         <aside className={className$16}>
           <div className={className$17}>INSPECTOR</div>
+          <p>
+            <label>
+              Place image
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                disabled={disabled}
+                onChange={(event) => {
+                  const input = event.currentTarget;
+                  const file = input.files?.item(0);
+                  if (file != null) {
+                    input.value = "";
+                    addImage(file);
+                  }
+                }}
+              />
+            </label>
+          </p>
           {value$3}
           {properties}
           {condition && <p aria-label="Last edit">{children$1}</p>}
@@ -758,45 +847,11 @@ export function editor(editor) {
               Copy previous checkpoint
             </button>
           )}
-          {editor.saveFailed && editor.recovery == null && (
-            <>
-              <p>Download a copy before leaving to keep your unsaved edits.</p>
-              <button
-                type="button"
-                disabled={editor.busy}
-                onClick={() => {
-                  const value = Backup.downloadUnsaved();
-                  if (value.TAG === "Err") {
-                    status(value._0);
-                  }
-                }}
-              >
-                Download unsaved project
-              </button>
-              <button
-                type="button"
-                disabled={editor.busy}
-                onClick={async () => {
-                  await retrySave();
-                }}
-              >
-                Retry draft save
-              </button>
-            </>
-          )}
-          <span id="agent" className={EDITOR_STYLES.agent}>
+          {children$2}
+          <span id="agent" className={className$18}>
             {editor.agent}
           </span>
-          {editor.server && (
-            <div id="server" className={EDITOR_STYLES.server}>
-              <button disabled={disabled} onClick={() => syncToServer(false)}>
-                Save to server
-              </button>
-              <button disabled={disabled} onClick={() => syncToServer(true)}>
-                Load server copy
-              </button>
-            </div>
-          )}
+          {children$3}
         </aside>
       </main>
       <footer className={SHELL.footer} role="status" id="status">

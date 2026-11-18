@@ -99,6 +99,7 @@ impl ProjectBundle {
             }
             let mut source = Scene::blank();
             source.layers = variant.layers.clone();
+            source.assets = variant.assets.clone();
             source.validate()?;
         }
         for screen in &self.screens {

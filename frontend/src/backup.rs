@@ -148,5 +148,15 @@ fn serialize(mut bundle: ProjectBundle) -> Result<String, String> {
 
 pub async fn import(json: &str) -> Result<Project, String> {
     let bundle = ProjectBundle::parse(json)?;
+    for screen in &bundle.screens {
+        for asset in &screen.scene.assets {
+            browser::image_dimensions(&asset.image).await?;
+        }
+    }
+    for variant in &bundle.library {
+        for asset in &variant.assets {
+            browser::image_dimensions(&asset.image).await?;
+        }
+    }
     projects::restore_bundle(&bundle, json).await
 }

@@ -31,7 +31,7 @@ fn project_card(project: &Project) -> JSX::Element {
     let preview = scene
         .layers
         .iter()
-        .map(view::preview_layer)
+        .map(|layer| view::preview_layer(layer, scene.image_for_layer(layer)))
         .collect::<Vec<_>>();
     jsx! {
         <a key={project.id.clone()} className={DASHBOARD.project_card()} href={project.href()}>

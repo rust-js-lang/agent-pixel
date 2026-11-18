@@ -4,14 +4,12 @@
 
 import { Project, projectSerialize_serialize } from "./projects.js";
 import * as Projects from "./projects.js";
-import {
-  batchDeserialize_deserialize,
-  batchSerialize_serialize,
-} from "../../core/src/scene.js";
+import { batchDeserialize_deserialize } from "../../core/src/scene.js";
 import * as Backup from "./backup.js";
 import { variantSerialize_serialize } from "./components.js";
 import * as Components from "./components.js";
 import {
+  applyBatch,
   changeDesign,
   changeVariant,
   editDesign,
@@ -101,6 +99,7 @@ const BATCH_SCHEMA = `{
             {"type":"object","required":["op","layer"],"additionalProperties":false,"properties":{
                 "op":{"const":"patch"},"layer":{"type":"object","description":"Same fields as edit_layer. Omit ID to create a layer."}
             }},
+            {"type":"object","required":["op","placement"],"additionalProperties":false,"properties":{"op":{"const":"place_image"},"placement":{"type":"object","required":["image","x","y","width","height"],"additionalProperties":false,"properties":{"image":{"type":"object","required":["name","dataUrl"],"additionalProperties":false,"properties":{"name":{"type":"string"},"dataUrl":{"type":"string","description":"Base64 PNG, JPEG or WebP data URL, at most 512 KiB decoded"}}},"x":{"type":"integer"},"y":{"type":"integer"},"width":{"type":"integer"},"height":{"type":"integer"}}}}},
             {"type":"object","required":["op","id"],"additionalProperties":false,"properties":{
                 "op":{"const":"delete"},"id":{"type":"string"}
             }}
@@ -201,7 +200,7 @@ export async function registerEditorTools() {
     {
       name: "apply_edits",
       description:
-        "Apply up to 100 layer patches or deletions atomically at the expected design revision. The batch is one undo step.",
+        "Apply up to 100 layer patches, image placements or deletions atomically at the expected design revision. The batch is one undo step.",
       inputSchema: parse(BATCH_SCHEMA),
       async execute(input) {
         const value = decode(
@@ -210,17 +209,7 @@ export async function registerEditorTools() {
           batchDeserialize_deserialize,
         );
         const result =
-          value.TAG === "Ok"
-            ? await changeDesign(
-                "batch",
-                $unwrapOk(
-                  $toJson(value._0, batchSerialize_serialize, false),
-                  "Serialize batch",
-                  $debugJsonError,
-                ),
-                "Agent",
-              )
-            : { TAG: "Err", _0: value._0 };
+          value.TAG === "Ok" ? await applyBatch(value._0, "Agent") : { TAG: "Err", _0: value._0 };
         return toolResult(result);
       },
     },

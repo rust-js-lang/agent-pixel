@@ -7,6 +7,7 @@ import { Project, projectSerialize_serialize } from "./projects.js";
 import * as Projects from "./projects.js";
 import { createRoot } from "react-dom/client";
 import {
+  Batch,
   batchSerialize_serialize,
   componentInsertSerialize_serialize,
   componentSwitchSerialize_serialize,
@@ -32,10 +33,14 @@ import {
   $debugJsonError,
   $displayJsonError,
   $eq,
+  $f64Max,
+  $f64Min,
+  $f64ToInt,
   $fromJson,
   $index,
   $jsonValueWrite,
   $position,
+  $round,
   $toJson,
   $toJsonValue,
   $unwrap,
@@ -90,6 +95,7 @@ export const Editor = {
             ...editor.seed,
             layers: editor.seed.layers.map((item) => ({ ...item })),
             instances: editor.seed.instances.map((item) => ({ ...item })),
+            assets: editor.seed.assets.slice(),
           }) ?? Project.initialScene(editor.project)
     );
   },
@@ -372,6 +378,68 @@ export async function editDesign(json, author) {
   return await changeDesign("edit", json, author);
 }
 
+export async function applyBatch(batch, author) {
+  const result = Batch.validateSize(batch);
+  if (result.TAG === "Err") {
+    return result;
+  }
+  for (const edit of batch.edits) {
+    if (edit.TAG === "PlaceImage") {
+      const result = await Browser.imageDimensions(edit.placement.image);
+      if (result.TAG === "Err") {
+        return result;
+      }
+    }
+  }
+  return await commitBatch(batch, author);
+}
+
+async function commitBatch(batch, author) {
+  const result = $toJson(batch, batchSerialize_serialize, false);
+  const result$1 = result.TAG === "Err" ? { TAG: "Err", _0: $displayJsonError(result._0) } : result;
+  if (result$1.TAG === "Err") {
+    return result$1;
+  }
+  const json = result$1._0;
+  return await changeDesign("batch", json, author);
+}
+
+export function addImage(file) {
+  const revision = $withBorrow(editor, (editor) => editor.revision, true);
+  (async () => {
+    const result = await (async () => {
+      const result = await Browser.readImage(file);
+      if (result.TAG === "Err") {
+        return result;
+      }
+      const image = result._0;
+      const result$1 = await Browser.imageDimensions(image);
+      if (result$1.TAG === "Err") {
+        return result$1;
+      }
+      const [width, height] = result$1._0;
+      const scale = $f64Min(160 / $f64Max(width, height), 1);
+      const placement = {
+        image,
+        x: 40,
+        y: 40,
+        width: $f64ToInt($f64Max($round(width * scale), 1), -2147483648, 2147483647),
+        height: $f64ToInt($f64Max($round(height * scale), 1), -2147483648, 2147483647),
+      };
+      return await commitBatch(
+        {
+          revision,
+          edits: [{ TAG: "PlaceImage", placement }],
+        },
+        "Person",
+      );
+    })();
+    if (result.TAG === "Err") {
+      status(result._0);
+    }
+  })();
+}
+
 export async function placeComponent(id, x, y, author) {
   const result = Components.component(id);
   if (result.TAG === "Err") {
@@ -520,6 +588,7 @@ async function persistDraft() {
                   ...editor.document.scene,
                   layers: editor.document.scene.layers.map((item) => ({ ...item })),
                   instances: editor.document.scene.instances.map((item) => ({ ...item })),
+                  assets: editor.document.scene.assets.slice(),
                 },
         },
         title,
@@ -528,6 +597,7 @@ async function persistDraft() {
           : editor.pinnedLibrary.map((item) => ({
               ...item,
               layers: item.layers.map((item) => ({ ...item })),
+              assets: item.assets.slice(),
             })),
       ];
     },
@@ -649,6 +719,7 @@ export function exportUnsaved() {
               ...editor.document.scene,
               layers: editor.document.scene.layers.map((item) => ({ ...item })),
               instances: editor.document.scene.instances.map((item) => ({ ...item })),
+              assets: editor.document.scene.assets.slice(),
             };
       const result =
         option != null ? { TAG: "Ok", _0: option } : { TAG: "Err", _0: "No artboard to export." };

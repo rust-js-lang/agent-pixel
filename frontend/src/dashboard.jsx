@@ -38,7 +38,9 @@ function projectCard(project) {
       label = `${count} layers`;
       break;
   }
-  const preview = scene.layers.map(View.previewLayer);
+  const preview = scene.layers.map((layer) =>
+    View.previewLayer(layer, Scene.imageForLayer(scene, layer)),
+  );
   return (
     <a key={project.id} className={DASHBOARD["project-card"]} href={Project.href(project)}>
       <div

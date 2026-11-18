@@ -93,6 +93,7 @@ const BATCH_SCHEMA: &str = r#"{
             {"type":"object","required":["op","layer"],"additionalProperties":false,"properties":{
                 "op":{"const":"patch"},"layer":{"type":"object","description":"Same fields as edit_layer. Omit ID to create a layer."}
             }},
+            {"type":"object","required":["op","placement"],"additionalProperties":false,"properties":{"op":{"const":"place_image"},"placement":{"type":"object","required":["image","x","y","width","height"],"additionalProperties":false,"properties":{"image":{"type":"object","required":["name","dataUrl"],"additionalProperties":false,"properties":{"name":{"type":"string"},"dataUrl":{"type":"string","description":"Base64 PNG, JPEG or WebP data URL, at most 512 KiB decoded"}}},"x":{"type":"integer"},"y":{"type":"integer"},"width":{"type":"integer"},"height":{"type":"integer"}}}}},
             {"type":"object","required":["op","id"],"additionalProperties":false,"properties":{
                 "op":{"const":"delete"},"id":{"type":"string"}
             }}
@@ -173,12 +174,12 @@ pub async fn register_editor_tools() -> Result<bool, &'static JsError> {
         history_tool("redo_edit", "Redo the next transaction in this editor session.", "redo"),
         Tool {
             name: "apply_edits",
-            description: "Apply up to 100 layer patches or deletions atomically at the expected design revision. The batch is one undo step.",
+            description: "Apply up to 100 layer patches, image placements or deletions atomically at the expected design revision. The batch is one undo step.",
             annotations: None,
             input_schema: parse(BATCH_SCHEMA),
             execute: Box::new(|input| js::promise(async move {
                 let result = match decode::<Batch>(input, "Provide valid edits and a design revision.") {
-                    Ok(batch) => crate::change_design("batch", &serde_json::to_string(&batch).expect("Serialize batch"), Author::Agent).await,
+                    Ok(batch) => crate::apply_batch(batch, Author::Agent).await,
                     Err(error) => Err(error),
                 };
                 tool_result(result)

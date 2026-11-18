@@ -36,3 +36,17 @@ test("compiled history rejects partial edits and reverses a batch in one step", 
   expect(run("redo", "r3", "stale").TAG).toBe("Err");
   expect(JSON.parse(run("redo", "r4", "r5")._0).scene).toEqual(edited.scene);
 });
+
+test("compiled image edits preserve references and assets through history", async () => {
+  const image = await Bun.file(new URL("../core/tests/fixtures/raster.json", import.meta.url)).json();
+  const session = Session.new(Scene.blank());
+  const run = (command, input, revision) => Session.command(session, command, JSON.stringify(input), revision, "agent");
+  const placement = { op: "place_image", placement: { image, x: 20, y: 30, width: 60, height: 60 } };
+  const edited = JSON.parse(run("batch", { revision: "", edits: [placement, placement] }, "place")._0);
+  expect(edited.scene.assets).toHaveLength(1);
+  expect(edited.scene.layers.map(layer => layer.imageId)).toEqual([edited.scene.assets[0].id, edited.scene.assets[0].id]);
+  expect(JSON.parse(run("undo", "place", "undone")._0).scene).toEqual({ version: 1, layers: [] });
+  expect(JSON.parse(run("redo", "undone", "redone")._0).scene).toEqual(edited.scene);
+  expect(run("restore", { ...edited.scene, assets: [] }, "invalid"))
+    .toEqual({ TAG: "Err", _0: "Image layer refers to a missing asset." });
+});

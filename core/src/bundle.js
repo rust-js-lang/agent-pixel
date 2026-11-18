@@ -216,6 +216,7 @@ export const ProjectBundle = {
       }
       const source = Scene.blank();
       source.layers = variant.layers.map((item) => ({ ...item }));
+      source.assets = variant.assets.slice();
       const result = Scene.validate(source);
       if (result.TAG === "Err") {
         return result;
