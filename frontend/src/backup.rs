@@ -39,7 +39,10 @@ pub fn export(id: &str) -> Result<String, String> {
                 poster: project.is_poster(),
                 handoff: (project.id == journey::PROJECT).then(|| journey::HANDOFF.to_owned()),
                 screens,
-                library: components::live_library()?,
+                library: match crate::drafts::recovery_library(&project.storage_key(false)) {
+                    Some(library) => library,
+                    None => components::live_library()?,
+                },
             }
         }
     };

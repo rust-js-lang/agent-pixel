@@ -415,7 +415,7 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
     let scale = editor.zoom / 100.0;
     let sheet_style = CSSProperties::new().width(format!("calc(var(--fit-width) * {scale})"));
     let zoom_label = format!("{:.0}%", editor.zoom);
-    let disabled = editor.busy || editor.document.scene.is_none();
+    let disabled = editor.busy || editor.recovery.is_some() || editor.document.scene.is_none();
     jsx! {
         <>
             <header className={SHELL.header()}>
@@ -465,6 +465,14 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
                     {properties}
                     {editor.history.undo.last().map(|entry| jsx! {
                         <p aria-label="Last edit">{format!("{} · {}", entry.label, if matches!(entry.author, Author::Agent) { "Agent" } else { "You" })}</p>
+                    })}
+                    {editor.recovery.as_ref().map(|project| jsx! {
+                        <p><a href={project.href()}>"Open recovery project"</a></p>
+                    })}
+                    {(editor.save_failed && editor.recovery.is_none()).then(|| jsx! {
+                        <button type="button" disabled={editor.busy} onClick={|_| {
+                            js::spawn(Box::new(async { let _ = crate::retry_save().await; }));
+                        }}>"Retry draft save"</button>
                     })}
                     <span id="agent" className={EDITOR_STYLES.agent()}>{editor.agent.clone()}</span>
                     {editor.server.then(|| jsx! {

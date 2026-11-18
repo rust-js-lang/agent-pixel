@@ -15,6 +15,7 @@ import {
 } from "../../core/src/bundle.js";
 import * as Bundle from "../../core/src/bundle.js";
 import { Scene } from "../../core/src/scene.js";
+import * as Drafts from "./drafts.js";
 import { message } from "./lib.js";
 import { $byteLen, $displayJsonError, $fromJson, $next, $toJson } from "@rust-js/std";
 
@@ -86,9 +87,16 @@ function export$(id) {
           ];
     const isPoster = Project.isPoster(project);
     const then = project.id === Journey.PROJECT ? Journey.HANDOFF : undefined;
-    const result = Components.liveLibrary();
-    if (result.TAG === "Err") {
-      return result;
+    const library = Drafts.recoveryLibrary(Project.storageKey(project, false));
+    let tmp;
+    if (library != null) {
+      tmp = library;
+    } else {
+      const result = Components.liveLibrary();
+      if (result.TAG === "Err") {
+        return result;
+      }
+      tmp = result._0;
     }
     bundle = {
       version: VERSION,
@@ -96,7 +104,7 @@ function export$(id) {
       poster: isPoster,
       handoff: then ?? undefined,
       screens,
-      library: result._0,
+      library: tmp,
     };
   }
   const iter = bundle.screens.entries();

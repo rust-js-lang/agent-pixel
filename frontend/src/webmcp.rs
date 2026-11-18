@@ -133,6 +133,20 @@ fn history_tool(name: &'static str, description: &'static str, command: &'static
 
 pub async fn register_editor_tools() -> Result<bool, &'static JsError> {
     register(vec![
+        Tool {
+            name: "get_save_status",
+            description: "Read the browser draft save state, durable revision, and any conflict recovery project.",
+            input_schema: parse(READ_SCHEMA),
+            annotations: Some(Annotations { read_only_hint: true }),
+            execute: Box::new(|_| js::promise(async { tool_result(crate::save_status()) })),
+        },
+        Tool {
+            name: "retry_draft_save",
+            description: "Retry saving a design held in memory after a browser storage error.",
+            input_schema: parse(READ_SCHEMA),
+            annotations: None,
+            execute: Box::new(|_| js::promise(async { tool_result(crate::retry_save().await) })),
+        },
         history_tool("undo_edit", "Undo the latest transaction in this editor session.", "undo"),
         history_tool("redo_edit", "Redo the next transaction in this editor session.", "redo"),
         Tool {

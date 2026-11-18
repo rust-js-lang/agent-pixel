@@ -7,6 +7,7 @@ import {
   edit,
   historyAction,
   placeComponent,
+  retrySave,
   select,
   status,
   syncToServer,
@@ -21,6 +22,7 @@ import SHELL from "./shell.module.css";
 import { BOARD_HEIGHT, BOARD_WIDTH } from "../../core/src/lib.js";
 import { Scene } from "../../core/src/scene.js";
 import * as Components from "./components.js";
+import { Project } from "./projects.js";
 import {
   $borrowMut,
   $byteLen,
@@ -556,7 +558,7 @@ export function editor(editor) {
   const scale = editor.zoom / 100;
   const sheetStyle = { width: `calc(var(--fit-width) * ${$displayF64(scale)})` };
   const zoomLabel = `${$toFixed(editor.zoom, 0)}%`;
-  const disabled = editor.busy || editor.document.scene == null;
+  const disabled = editor.busy || editor.recovery != null || editor.document.scene == null;
   const className = SHELL.header;
   const className$1 = SHELL.brand;
   const className$2 = SHELL.crumb;
@@ -722,6 +724,22 @@ export function editor(editor) {
           {properties}
           {condition && (
             <p aria-label="Last edit">{`${entry.label} · ${entry.author === "Agent" ? "Agent" : "You"}`}</p>
+          )}
+          {editor.recovery != null && (
+            <p>
+              <a href={Project.href(editor.recovery)}>Open recovery project</a>
+            </p>
+          )}
+          {editor.saveFailed && editor.recovery == null && (
+            <button
+              type="button"
+              disabled={editor.busy}
+              onClick={async () => {
+                await retrySave();
+              }}
+            >
+              Retry draft save
+            </button>
           )}
           <span id="agent" className={EDITOR_STYLES.agent}>
             {editor.agent}

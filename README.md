@@ -99,3 +99,9 @@ Open **Project backup** on the dashboard to download a versioned JSON bundle or 
 Use **Undo**, **Redo**, and **Delete layer** in the editor. Deleting a linked component layer removes the whole instance. The inspector labels the last committed change as yours or the agent's.
 
 For multi-layer agent edits, call `read_design` for its current revision and then `apply_edits` with `{ revision, edits }`. Each edit is `{ op: "patch", layer }` using the fields accepted by `edit_layer`, or `{ op: "delete", id }`. A successful batch counts as one undo step. Use `undo_edit` and `redo_edit` with the latest revision. The worker keeps the last 32 transactions in the current editor session.
+
+## Durable browser drafts
+
+The editor saves drafts to IndexedDB and keeps the previous saved snapshot. Existing localStorage drafts are validated and migrated when opened, with the original left in place. If a stale tab tries to save over a newer revision, it saves its edits as a separate **Recovery** project. Open that project from the editor's recovery link or the dashboard.
+
+Agents can use `get_save_status` to check the durable revision or obtain a recovery project ID. If storage fails, the current editor keeps the changes in memory. Use **Retry draft save** or `retry_draft_save` after resolving the storage error.

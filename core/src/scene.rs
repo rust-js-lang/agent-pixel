@@ -30,7 +30,7 @@ pub struct Scene {
     pub instances: Vec<ComponentInstance>,
 }
 
-#[derive(Clone, Default, Deserialize, Serialize)]
+#[derive(Clone, Default, PartialEq, Deserialize, Serialize)]
 pub struct Document {
     pub revision: u64,
     pub scene: Option<Scene>,

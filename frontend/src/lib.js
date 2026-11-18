@@ -3,7 +3,7 @@
 import * as Transport from "./transport.js";
 export { serveWorker } from "./transport.js";
 
-import { Project } from "./projects.js";
+import { Project, projectSerialize_serialize } from "./projects.js";
 import * as Projects from "./projects.js";
 import { createRoot } from "react-dom/client";
 import {
@@ -22,6 +22,7 @@ import * as Backup from "./backup.js";
 import * as Browser from "./browser.js";
 import * as Components from "./components.js";
 import * as Dashboard from "./dashboard.jsx";
+import * as Drafts from "./drafts.js";
 import { Screen } from "./journey.js";
 import * as Journey from "./journey.js";
 import * as View from "./view.jsx";
@@ -33,8 +34,10 @@ import {
   $eq,
   $fromJson,
   $index,
+  $jsonValueWrite,
   $position,
   $toJson,
+  $toJsonValue,
   $unwrap,
   $unwrapOk,
   $withBorrow,
@@ -44,6 +47,8 @@ import {
 let root;
 export const editor = {
   document: { revision: 0n },
+  saveFailed: false,
+  refreshPending: false,
   revision: "",
   history: { undo: [], redo: [] },
   server: false,
@@ -88,24 +93,32 @@ const Editor = {
           }) ?? Project.initialScene(editor.project)
     );
   },
-
-  saveLocal(editor) {
-    const result = $toJson(editor.document, documentSerialize_serialize, false);
-    const result$1 =
-      result.TAG === "Err" ? { TAG: "Err", _0: $displayJsonError(result._0) } : result;
-    if (result$1.TAG === "Err") {
-      return result$1;
-    }
-    const body = result$1._0;
-    const result$2 = Browser.saveDraft(Editor.storageKey(editor), body);
-    return result$2.TAG === "Err" ? { TAG: "Err", _0: message(result$2._0) } : result$2;
-  },
 };
 
 export function mount() {
   const node = $unwrap(window.document.getElementById("root"), "Editor root");
   const root$1 = createRoot(node);
   root = root$1;
+  bootstrap(root$1);
+}
+
+async function bootstrap(root) {
+  const result = await Drafts.reloadCache();
+  const warning = result.TAG === "Err" ? result._0 : undefined;
+  window.addEventListener("storage", (event) => {
+    const key = event.key;
+    if (key == null || key === Drafts.CHANGED || key === Components.libraryKey()) {
+      (async () => {
+        if ((await Drafts.reloadCache()).TAG === "Ok") {
+          if (Projects.route() == null) {
+            renderDashboard();
+          } else {
+            await refreshLinkedComponents();
+          }
+        }
+      })();
+    }
+  });
   const value = Projects.route();
   if (value == null) {
     renderDashboard();
@@ -122,7 +135,7 @@ export function mount() {
   const server = value[1];
   const project = Projects.find(id);
   if (project == null) {
-    root$1.render(Dashboard.missing());
+    root.render(Dashboard.missing());
     return;
   }
   const value$1 = Backup.saved(project);
@@ -133,6 +146,7 @@ export function mount() {
       editor,
       (editor) => {
         editor.poster = Project.isPoster(project);
+        editor.pinnedLibrary = Drafts.recoveryLibrary(Project.storageKey(project, false));
         if (bundle != null) {
           const index = $position(bundle.screens, (screen) => screenId === screen.info.id) ?? 0;
           editor.screens = bundle.screens.map((screen) => ({ ...screen.info }));
@@ -163,15 +177,14 @@ export function mount() {
       window.addEventListener("keydown", Zoom.keyboard);
     }
     status("Opening document…");
-    (async () => {
-      const value = await start();
-      if (value.TAG === "Err") {
-        status(value._0);
-      }
-    })();
+    const value = await start(warning);
+    if (value.TAG === "Err") {
+      status(value._0);
+    }
+  } else {
+    root.render(Dashboard.unavailable(value$1._0));
     return;
   }
-  root$1.render(Dashboard.unavailable(value$1._0));
 }
 
 export function renderDashboard() {
@@ -236,13 +249,16 @@ async function fetchDocument(body) {
   }
 }
 
-async function start() {
+async function start(storageWarning) {
   const [key, server] = $withBorrow(
     editor,
     (editor) => [Editor.storageKey(editor), editor.server],
     true,
   );
   const local = Projects.loadDocument(key);
+  const storageRevision = Drafts.revision(key);
+  const migrate =
+    storageRevision == null && local.TAG === "Ok" && local._0 != null && local._0.scene != null;
   let tmp;
   if (local.TAG === "Ok") {
     if (local._0 != null) {
@@ -284,19 +300,21 @@ async function start() {
       editor.history = captured$2;
       Editor.replaceScene(editor, captured);
       editor.document.revision = saved.revision;
+      editor.storageRevision = storageRevision;
       editor.status =
         warning ??
+        storageWarning ??
         (server ? `Server workspace · Revision ${saved.revision}` : "Browser workspace · Ready");
     },
     true,
   );
-  await refreshLinkedComponents();
-  window.addEventListener("storage", (event) => {
-    const key = event.key;
-    if (key == null || key === Components.libraryKey()) {
-      refreshLinkedComponents();
+  if (migrate && warning == null && storageWarning == null) {
+    const value = await persistDraft();
+    if (value.TAG === "Err") {
+      status(value._0);
     }
-  });
+  }
+  await refreshLinkedComponents();
   render();
   if ($withBorrow(editor, (editor) => editor.preview, true)) {
     return { TAG: "Ok" };
@@ -384,13 +402,26 @@ export async function changeVariant(id, variant, author) {
 }
 
 async function refreshLinkedComponents() {
-  const hasInstances = $withBorrow(
+  const hasInstances = $withBorrowMut(
     editor,
-    (editor) =>
-      !editor.busy &&
-      (editor.history.undo.length !== 0 ||
-        editor.history.redo.length !== 0 ||
-        (editor.document.scene != null && editor.document.scene.instances.length !== 0)),
+    (editor) => {
+      if (editor.busy) {
+        editor.refreshPending = true;
+        return false;
+      }
+      editor.refreshPending = false;
+      let needsRefresh;
+      if (editor.recovery != null) {
+        needsRefresh = false;
+      } else if (editor.history.undo.length === 0 && editor.history.redo.length === 0) {
+        const scene = editor.document.scene;
+        needsRefresh = scene != null && scene.instances.length !== 0;
+      } else {
+        needsRefresh = true;
+      }
+      editor.busy = needsRefresh;
+      return needsRefresh;
+    },
     true,
   );
   if (!hasInstances) {
@@ -434,27 +465,221 @@ async function refreshLinkedComponents() {
         editor.revision = captured$1;
         editor.history = captured$2;
         editor.document.scene = captured;
-        if (Editor.saveLocal(editor).TAG === "Ok") {
-          editor.status = "Linked components updated from Canopy UI";
-        } else {
-          editor.status = "Linked components updated in memory";
-        }
         return true;
       },
       true,
     );
     if (changed) {
-      render();
+      const value = await persistDraft();
+      if (value.TAG === "Ok") {
+        status("Linked components updated from Canopy UI");
+      } else {
+        status(value._0);
+      }
     }
   } else {
     status(result._0);
   }
+  $withBorrowMut(
+    editor,
+    (editor) => {
+      editor.busy = false;
+    },
+    true,
+  );
+  render();
+}
+
+async function persistDraft() {
+  const [key, revision, document, title, library] = $withBorrow(
+    editor,
+    (editor) => {
+      const title =
+        editor.screen != null
+          ? `${editor.project.title} · ${editor.screen.title}`
+          : editor.project.title;
+      return [
+        Editor.storageKey(editor),
+        editor.storageRevision,
+        {
+          ...editor.document,
+          scene:
+            editor.document.scene == null
+              ? editor.document.scene
+              : {
+                  ...editor.document.scene,
+                  layers: editor.document.scene.layers.map((item) => ({ ...item })),
+                  instances: editor.document.scene.instances.map((item) => ({ ...item })),
+                },
+        },
+        title,
+        editor.pinnedLibrary == null
+          ? editor.pinnedLibrary
+          : editor.pinnedLibrary.map((item) => ({
+              ...item,
+              layers: item.layers.map((item) => ({ ...item })),
+            })),
+      ];
+    },
+    true,
+  );
+  const value = await Drafts.commit(key, revision, document, title, library);
+  if (value.TAG === "Ok") {
+    if (value._0.TAG === "Saved") {
+      const revision = value._0._0;
+      $withBorrowMut(
+        editor,
+        (editor) => {
+          editor.storageRevision = revision;
+          editor.saveFailed = false;
+        },
+        true,
+      );
+      return { TAG: "Ok" };
+    }
+    const project = value._0._0;
+    const message = `Another tab saved this design. Changes saved in recovery project ${project.id}.`;
+    $withBorrowMut(
+      editor,
+      (editor) => {
+        editor.recovery = project;
+      },
+      true,
+    );
+    return { TAG: "Err", _0: message };
+  }
+  $withBorrowMut(
+    editor,
+    (editor) => {
+      editor.saveFailed = true;
+    },
+    true,
+  );
+  return { TAG: "Err", _0: `${value._0} Edits are in memory.` };
+}
+
+export function saveStatus() {
+  return $withBorrow(
+    editor,
+    (editor) => {
+      const state =
+        editor.recovery != null
+          ? "conflict"
+          : editor.saveFailed
+            ? "unsaved"
+            : editor.busy
+              ? "saving"
+              : editor.storageRevision != null
+                ? "saved"
+                : "ready";
+      const map = new Map();
+      map.set("state", { TAG: "String", _0: state });
+      map.set(
+        "storageRevision",
+        $unwrapOk(
+          $toJsonValue(editor.storageRevision, (value, json) => {
+            if (value == null) {
+              json.null();
+            } else {
+              json.string(value);
+            }
+          }),
+          undefined,
+          $debugJsonError,
+        ),
+      );
+      map.set(
+        "recovery",
+        $unwrapOk(
+          $toJsonValue(editor.recovery, (value, json) => {
+            if (value == null) {
+              json.null();
+            } else {
+              projectSerialize_serialize(value, json);
+            }
+          }),
+          undefined,
+          $debugJsonError,
+        ),
+      );
+      map.set("message", { TAG: "String", _0: editor.status });
+      const result = $toJson({ TAG: "Object", _0: map }, $jsonValueWrite, false);
+      return result.TAG === "Err" ? { TAG: "Err", _0: $displayJsonError(result._0) } : result;
+    },
+    true,
+  );
+}
+
+export async function retrySave() {
+  const result$1 = $withBorrowMut(
+    editor,
+    (editor) => {
+      if (editor.busy) {
+        return { TAG: "Err", _0: "Wait for the current document operation." };
+      }
+      if (!editor.saveFailed || editor.recovery != null) {
+        return { TAG: "Err", _0: "No failed draft save to retry." };
+      }
+      editor.busy = true;
+      return { TAG: "Ok" };
+    },
+    true,
+  );
+  if (result$1.TAG === "Err") {
+    return result$1;
+  }
+  status("Saving draft…");
+  const result = await persistDraft();
+  $withBorrowMut(
+    editor,
+    (editor) => {
+      editor.busy = false;
+    },
+    true,
+  );
+  if (result.TAG === "Ok") {
+    status("Saved in this browser");
+    return saveStatus();
+  } else {
+    status(result._0);
+    return { TAG: "Err", _0: result._0 };
+  }
 }
 
 export async function changeDesign(command, json, author) {
-  if ($withBorrow(editor, (editor) => editor.busy, true)) {
-    return { TAG: "Err", _0: "Wait for the document server operation." };
+  const result$1 = $withBorrowMut(
+    editor,
+    (editor) => {
+      if (editor.busy) {
+        return { TAG: "Err", _0: "Wait for the current document operation." };
+      }
+      if (editor.recovery != null) {
+        return { TAG: "Err", _0: "Open the recovery project to continue editing." };
+      }
+      editor.busy = true;
+      return { TAG: "Ok" };
+    },
+    true,
+  );
+  if (result$1.TAG === "Err") {
+    return result$1;
   }
+  const result = await applyDesign(command, json, author);
+  $withBorrowMut(
+    editor,
+    (editor) => {
+      editor.busy = false;
+    },
+    true,
+  );
+  if ($withBorrow(editor, (editor) => editor.refreshPending, true)) {
+    await refreshLinkedComponents();
+  }
+  render();
+  return result;
+}
+
+async function applyDesign(command, json, author) {
   const result = await Transport.request(command, json, author);
   if (result.TAG === "Err") {
     return result;
@@ -485,17 +710,22 @@ export async function changeDesign(command, json, author) {
       editor.revision = captured$1;
       editor.history = captured$2;
       editor.document.scene = captured;
-      editor.status =
-        Editor.saveLocal(editor).TAG === "Err"
-          ? "Browser storage unavailable · Edits are in memory"
-          : editor.server
-            ? "Local draft saved · Save to server to publish this revision"
-            : "Saved in this browser";
     },
     true,
   );
-  render();
-  return { TAG: "Ok", _0: reply };
+  status("Saving draft…");
+  const value = await persistDraft();
+  if (value.TAG === "Ok") {
+    const server = $withBorrow(editor, (editor) => editor.server, true);
+    status(
+      server
+        ? "Local draft saved · Save to server to publish this revision"
+        : "Saved in this browser",
+    );
+    return { TAG: "Ok", _0: reply };
+  }
+  status(value._0);
+  return { TAG: "Err", _0: value._0 };
 }
 
 export function edit(patch) {
@@ -630,27 +860,18 @@ async function saveServer() {
     return result$2;
   }
   const saved = result$2._0;
-  return $withBorrowMut(
+  $withBorrowMut(
     editor,
     (editor) => {
       editor.document.revision = saved.revision;
-      if ($eq(editor.document.scene, saved.scene)) {
-        const result = Browser.saveDraft(Project.storageKey(editor.project, editor.server));
-        const result$1 = result.TAG === "Err" ? { TAG: "Err", _0: message(result._0) } : result;
-        if (result$1.TAG === "Err") {
-          return result$1;
-        }
-        return { TAG: "Ok", _0: `Saved server revision ${saved.revision}` };
-      } else {
-        const result = Editor.saveLocal(editor);
-        if (result.TAG === "Err") {
-          return result;
-        }
-        return { TAG: "Ok", _0: "Newer edits remain in your local draft" };
-      }
     },
     true,
   );
+  const result$3 = await persistDraft();
+  if (result$3.TAG === "Err") {
+    return result$3;
+  }
+  return { TAG: "Ok", _0: `Saved server revision ${saved.revision}` };
 }
 
 async function loadServer() {
@@ -675,21 +896,20 @@ async function loadServer() {
   const captured = design.scene;
   const captured$1 = design.revision;
   const captured$2 = design.history;
-  return $withBorrowMut(
+  $withBorrowMut(
     editor,
     (editor) => {
       editor.revision = captured$1;
       editor.history = captured$2;
       Editor.replaceScene(editor, captured);
       editor.document.revision = saved.revision;
-      const result = Browser.saveDraft(Project.storageKey(editor.project, editor.server));
-      const result$1 = result.TAG === "Err" ? { TAG: "Err", _0: message(result._0) } : result;
-      if (result$1.TAG === "Err") {
-        return result$1;
-      }
-      return { TAG: "Ok", _0: `Loaded server revision ${saved.revision}` };
     },
     true,
   );
+  const result$3 = await persistDraft();
+  if (result$3.TAG === "Err") {
+    return result$3;
+  }
+  return { TAG: "Ok", _0: `Loaded server revision ${saved.revision}` };
 }
 //# sourceMappingURL=lib.js.map

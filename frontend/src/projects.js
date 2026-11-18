@@ -7,6 +7,7 @@ import {
   documentDeserialize_deserialize,
   sceneDeserialize_deserialize,
 } from "../../core/src/scene.js";
+import * as Drafts from "./drafts.js";
 import { PROJECT, Screen } from "./journey.js";
 import * as Journey from "./journey.js";
 import { message } from "./lib.js";
@@ -27,7 +28,7 @@ const CANOPY = "canopy-ui";
 const WEB_APP = "web-app";
 const CATALOG = "agent-pixel:projects:v1";
 
-function projectDeserialize_deserialize(json) {
+export function projectDeserialize_deserialize(json) {
   return json.struct(
     "struct Project",
     [
@@ -113,6 +114,10 @@ export const Project = {
 };
 
 export function loadDocument(key) {
+  const document = Drafts.read(key);
+  if (document != null) {
+    return { TAG: "Ok", _0: document };
+  }
   const result = Browser.loadDraft(key);
   const result$1 = result.TAG === "Err" ? { TAG: "Err", _0: message(result._0) } : result;
   if (result$1.TAG === "Err") {
@@ -175,6 +180,10 @@ export function list() {
     warning = undefined;
   } else {
     warning = "Could not read your saved project list.";
+  }
+  const items = Drafts.recoveries();
+  for (let i = 0; i < items.length; i++) {
+    projects.push(items[i]);
   }
   return [projects, warning];
 }

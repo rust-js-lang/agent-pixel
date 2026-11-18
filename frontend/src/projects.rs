@@ -63,6 +63,9 @@ impl Project {
 }
 
 pub fn load_document(key: &str) -> Result<Option<Document>, String> {
+    if let Some(document) = crate::drafts::read(key) {
+        return Ok(Some(document));
+    }
     let json = browser::load_draft(key).map_err(crate::message)?;
     json.map(|json| serde_json::from_str(&json).map_err(|error| error.to_string()))
         .transpose()
@@ -107,6 +110,7 @@ pub fn list() -> (Vec<Project>, Option<String>) {
         }
         Err(_) => Some("Could not read your saved project list.".into()),
     };
+    projects.extend(crate::drafts::recoveries());
     (projects, warning)
 }
 

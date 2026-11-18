@@ -18,6 +18,8 @@ import {
   placeComponent,
   readDesign,
   renderDashboard,
+  retrySave,
+  saveStatus,
 } from "./lib.js";
 import {
   $debugJsonError,
@@ -145,6 +147,20 @@ function historyTool(name, description, command) {
 
 export async function registerEditorTools() {
   return await register([
+    {
+      name: "get_save_status",
+      description:
+        "Read the browser draft save state, durable revision, and any conflict recovery project.",
+      inputSchema: parse(READ_SCHEMA),
+      annotations: { readOnlyHint: true },
+      execute: async () => toolResult(saveStatus()),
+    },
+    {
+      name: "retry_draft_save",
+      description: "Retry saving a design held in memory after a browser storage error.",
+      inputSchema: parse(READ_SCHEMA),
+      execute: async () => toolResult(await retrySave()),
+    },
     historyTool("undo_edit", "Undo the latest transaction in this editor session.", "undo"),
     historyTool("redo_edit", "Redo the next transaction in this editor session.", "redo"),
     {

@@ -1,6 +1,8 @@
 mod artboard_styles;
 mod backup;
 mod browser;
+mod drafts;
+
 mod canvas_styles;
 mod dashboard_styles;
 mod editor_styles;
@@ -36,6 +38,10 @@ thread_local! {
 #[derive(Default)]
 struct Editor {
     document: Document,
+    storage_revision: Option<String>,
+    recovery: Option<Project>,
+    save_failed: bool,
+    refresh_pending: bool,
     revision: String,
     history: History,
     selected: Option<String>,
@@ -80,11 +86,6 @@ impl Editor {
             .clone()
             .unwrap_or_else(|| self.project.initial_scene())
     }
-
-    fn save_local(&self) -> Result<(), String> {
-        let body = serde_json::to_string(&self.document).map_err(|e| e.to_string())?;
-        browser::save_draft(&self.storage_key(), Some(&body)).map_err(message)
-    }
 }
 
 pub fn mount() {
@@ -94,6 +95,31 @@ pub fn mount() {
         .expect("Editor root");
     let root = create_root(node, None);
     ROOT.set(Some(root));
+    js::spawn(Box::new(bootstrap(root)));
+}
+
+async fn bootstrap(root: &'static Root) {
+    let warning = drafts::reload_cache().await.err();
+    window().add_event_listener(
+        events::Storage,
+        |event: &StorageEvent| {
+            if event
+                .key()
+                .is_none_or(|key| key == drafts::CHANGED || key == components::library_key())
+            {
+                js::spawn(Box::new(async {
+                    if drafts::reload_cache().await.is_ok() {
+                        if projects::route().is_none() {
+                            render_dashboard();
+                        } else {
+                            refresh_linked_components().await;
+                        }
+                    }
+                }));
+            }
+        },
+        None,
+    );
     let Some((id, server)) = projects::route() else {
         render_dashboard();
         js::spawn(Box::new(async {
@@ -117,6 +143,7 @@ pub fn mount() {
     let screen_id = browser::query_value("screen");
     EDITOR.with_borrow_mut(|editor| {
         editor.poster = project.is_poster();
+        editor.pinned_library = drafts::recovery_library(&project.storage_key(false));
         if let Some(bundle) = bundle {
             let index = bundle
                 .screens
@@ -160,11 +187,9 @@ pub fn mount() {
         window().add_event_listener(events::Keydown, zoom::keyboard, None);
     }
     status("Opening document…".into());
-    js::spawn(Box::new(async {
-        if let Err(error) = start().await {
-            status(error);
-        }
-    }));
+    if let Err(error) = start(warning).await {
+        status(error);
+    }
 }
 
 fn render_dashboard() {
@@ -209,9 +234,12 @@ async fn fetch_document(body: Option<&str>) -> Result<Document, String> {
     }
 }
 
-async fn start() -> Result<(), String> {
+async fn start(storage_warning: Option<String>) -> Result<(), String> {
     let (key, server) = EDITOR.with_borrow(|editor| (editor.storage_key(), editor.server));
     let local = projects::load_document(&key);
+    let storage_revision = drafts::revision(&key);
+    let migrate = storage_revision.is_none()
+        && matches!(&local, Ok(Some(document)) if document.scene.is_some());
     let (saved, mut warning) = match local {
         Ok(Some(saved)) => (saved, None),
         Ok(None) if server => (fetch_document(None).await?, None),
@@ -236,27 +264,24 @@ async fn start() -> Result<(), String> {
         editor.history = design.history;
         editor.replace_scene(design.scene);
         editor.document.revision = saved.revision;
-        editor.status = warning.unwrap_or_else(|| {
-            if server {
-                format!("Server workspace · Revision {}", saved.revision)
-            } else {
-                "Browser workspace · Ready".into()
-            }
-        });
+        editor.storage_revision = storage_revision;
+        editor.status = warning
+            .clone()
+            .or(storage_warning.clone())
+            .unwrap_or_else(|| {
+                if server {
+                    format!("Server workspace · Revision {}", saved.revision)
+                } else {
+                    "Browser workspace · Ready".into()
+                }
+            });
     });
+    if migrate && warning.is_none() && storage_warning.is_none() {
+        if let Err(error) = persist_draft().await {
+            status(error);
+        }
+    }
     refresh_linked_components().await;
-    window().add_event_listener(
-        events::Storage,
-        |event: &StorageEvent| {
-            if event
-                .key()
-                .is_none_or(|key| key == components::library_key())
-            {
-                js::spawn(Box::new(refresh_linked_components()));
-            }
-        },
-        None,
-    );
     render();
     if EDITOR.with_borrow(|editor| editor.preview) {
         return Ok(());
@@ -307,15 +332,22 @@ async fn change_variant(id: String, variant: &str, author: Author) -> Result<Str
 }
 
 async fn refresh_linked_components() {
-    let has_instances = EDITOR.with_borrow(|editor| {
-        !editor.busy
+    let has_instances = EDITOR.with_borrow_mut(|editor| {
+        if editor.busy {
+            editor.refresh_pending = true;
+            return false;
+        }
+        editor.refresh_pending = false;
+        let needs_refresh = editor.recovery.is_none()
             && (!editor.history.undo.is_empty()
                 || !editor.history.redo.is_empty()
                 || editor
                     .document
                     .scene
                     .as_ref()
-                    .is_some_and(|scene| !scene.instances.is_empty()))
+                    .is_some_and(|scene| !scene.instances.is_empty()));
+        editor.busy = needs_refresh;
+        needs_refresh
     });
     if !has_instances {
         return;
@@ -335,25 +367,126 @@ async fn refresh_linked_components() {
                 editor.revision = design.revision;
                 editor.history = design.history;
                 editor.document.scene = Some(design.scene);
-                if editor.save_local().is_ok() {
-                    editor.status = "Linked components updated from Canopy UI".into();
-                } else {
-                    editor.status = "Linked components updated in memory".into();
-                }
                 true
             });
             if changed {
-                render();
+                match persist_draft().await {
+                    Ok(()) => status("Linked components updated from Canopy UI".into()),
+                    Err(error) => status(error),
+                }
             }
         }
         Err(error) => status(error),
     }
+    EDITOR.with_borrow_mut(|editor| editor.busy = false);
+    render();
+}
+
+async fn persist_draft() -> Result<(), String> {
+    let (key, revision, document, title, library) = EDITOR.with_borrow(|editor| {
+        let title = editor.screen.as_ref().map_or_else(
+            || editor.project.title.clone(),
+            |screen| format!("{} · {}", editor.project.title, screen.title),
+        );
+        (
+            editor.storage_key(),
+            editor.storage_revision.clone(),
+            editor.document.clone(),
+            title,
+            editor.pinned_library.clone(),
+        )
+    });
+    match drafts::commit(key, revision, document, &title, library).await {
+        Ok(drafts::Commit::Saved(revision)) => {
+            EDITOR.with_borrow_mut(|editor| {
+                editor.storage_revision = Some(revision);
+                editor.save_failed = false;
+            });
+            Ok(())
+        }
+        Ok(drafts::Commit::Recovery(project)) => {
+            let message = format!(
+                "Another tab saved this design. Changes saved in recovery project {}.",
+                project.id
+            );
+            EDITOR.with_borrow_mut(|editor| editor.recovery = Some(project));
+            Err(message)
+        }
+        Err(error) => {
+            EDITOR.with_borrow_mut(|editor| editor.save_failed = true);
+            Err(format!("{error} Edits are in memory."))
+        }
+    }
+}
+
+fn save_status() -> Result<String, String> {
+    EDITOR.with_borrow(|editor| {
+        let state = if editor.recovery.is_some() {
+            "conflict"
+        } else if editor.save_failed {
+            "unsaved"
+        } else if editor.busy {
+            "saving"
+        } else if editor.storage_revision.is_some() {
+            "saved"
+        } else {
+            "ready"
+        };
+        serde_json::to_string(&serde_json::json!({
+            "state": state, "storageRevision": editor.storage_revision,
+            "recovery": editor.recovery, "message": editor.status
+        }))
+        .map_err(|error| error.to_string())
+    })
+}
+
+async fn retry_save() -> Result<String, String> {
+    EDITOR.with_borrow_mut(|editor| {
+        if editor.busy {
+            return Err("Wait for the current document operation.");
+        }
+        if !editor.save_failed || editor.recovery.is_some() {
+            return Err("No failed draft save to retry.");
+        }
+        editor.busy = true;
+        Ok(())
+    })?;
+    status("Saving draft…".into());
+    let result = persist_draft().await;
+    EDITOR.with_borrow_mut(|editor| editor.busy = false);
+    match result {
+        Ok(()) => {
+            status("Saved in this browser".into());
+            save_status()
+        }
+        Err(error) => {
+            status(error.clone());
+            Err(error)
+        }
+    }
 }
 
 async fn change_design(command: &str, json: &str, author: Author) -> Result<String, String> {
-    if EDITOR.with_borrow(|editor| editor.busy) {
-        return Err("Wait for the document server operation.".into());
+    EDITOR.with_borrow_mut(|editor| {
+        if editor.busy {
+            return Err("Wait for the current document operation.");
+        }
+        if editor.recovery.is_some() {
+            return Err("Open the recovery project to continue editing.");
+        }
+        editor.busy = true;
+        Ok(())
+    })?;
+    let result = apply_design(command, json, author).await;
+    EDITOR.with_borrow_mut(|editor| editor.busy = false);
+    if EDITOR.with_borrow(|editor| editor.refresh_pending) {
+        refresh_linked_components().await;
     }
+    render();
+    result
+}
+
+async fn apply_design(command: &str, json: &str, author: Author) -> Result<String, String> {
     let reply = transport::request(command, json, author).await?;
     let design: Design = serde_json::from_str(&reply).map_err(|error| error.to_string())?;
     EDITOR.with_borrow_mut(|editor| {
@@ -367,16 +500,25 @@ async fn change_design(command: &str, json: &str, author: Author) -> Result<Stri
         editor.revision = design.revision;
         editor.history = design.history;
         editor.document.scene = Some(design.scene);
-        editor.status = if editor.save_local().is_err() {
-            "Browser storage unavailable · Edits are in memory"
-        } else if editor.server {
-            "Local draft saved · Save to server to publish this revision"
-        } else {
-            "Saved in this browser"
-        }
-        .into();
     });
-    render();
+    status("Saving draft…".into());
+    match persist_draft().await {
+        Ok(()) => {
+            let server = EDITOR.with_borrow(|editor| editor.server);
+            status(
+                if server {
+                    "Local draft saved · Save to server to publish this revision"
+                } else {
+                    "Saved in this browser"
+                }
+                .into(),
+            );
+        }
+        Err(error) => {
+            status(error.clone());
+            return Err(error);
+        }
+    }
     Ok(reply)
 }
 
@@ -466,17 +608,9 @@ async fn save_server() -> Result<String, String> {
         .with_borrow(|editor| serde_json::to_string(&editor.document))
         .map_err(|error| error.to_string())?;
     let saved = fetch_document(Some(&json)).await?;
-    EDITOR.with_borrow_mut(|editor| {
-        editor.document.revision = saved.revision;
-        if editor.document.scene == saved.scene {
-            browser::save_draft(&editor.project.storage_key(editor.server), None)
-                .map_err(message)?;
-            Ok(format!("Saved server revision {}", saved.revision))
-        } else {
-            editor.save_local()?;
-            Ok("Newer edits remain in your local draft".into())
-        }
-    })
+    EDITOR.with_borrow_mut(|editor| editor.document.revision = saved.revision);
+    persist_draft().await?;
+    Ok(format!("Saved server revision {}", saved.revision))
 }
 
 async fn load_server() -> Result<String, String> {
@@ -488,7 +622,7 @@ async fn load_server() -> Result<String, String> {
         editor.history = design.history;
         editor.replace_scene(design.scene);
         editor.document.revision = saved.revision;
-        browser::save_draft(&editor.project.storage_key(editor.server), None).map_err(message)?;
-        Ok(format!("Loaded server revision {}", saved.revision))
-    })
+    });
+    persist_draft().await?;
+    Ok(format!("Loaded server revision {}", saved.revision))
 }
