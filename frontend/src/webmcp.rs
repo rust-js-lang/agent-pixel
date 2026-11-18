@@ -1,5 +1,7 @@
 //! Browser bindings for the experimental WebMCP model context.
+use crate::projects;
 use js::{JsError, JsObject, Promise, Unknown, json, promise};
+use serde::Deserialize;
 use std::marker::PhantomData;
 
 struct ModelContext(PhantomData<JsObject>);
@@ -48,11 +50,8 @@ const EDIT_SCHEMA: &str = r##"{
     }
 }"##;
 
-pub async fn register_tools() -> Result<bool, &'static JsError> {
-    let Some(context) = document_context().or_else(navigator_context) else {
-        return Ok(false);
-    };
-    for tool in [
+pub async fn register_editor_tools() -> Result<bool, &'static JsError> {
+    register(vec![
         Tool {
             name: "read_design",
             description: "Read the artboard and its ordered layers.",
@@ -80,12 +79,114 @@ pub async fn register_tools() -> Result<bool, &'static JsError> {
                 })
             }),
         },
-    ] {
+    ]).await
+}
+
+async fn register(tools: Vec<Tool>) -> Result<bool, &'static JsError> {
+    let Some(context) = document_context().or_else(navigator_context) else {
+        return Ok(false);
+    };
+    for tool in tools {
         if let Some(registered) = context.register(tool)? {
             js::settle(registered).await?;
         }
     }
     Ok(true)
+}
+
+const CREATE_SCHEMA: &str = r#"{
+    "type":"object","required":["title"],"additionalProperties":false,
+    "properties":{"title":{"type":"string","minLength":1,"maxLength":80}}
+}"#;
+const OPEN_SCHEMA: &str = r#"{
+    "type":"object","required":["id"],"additionalProperties":false,
+    "properties":{"id":{"type":"string","description":"Project ID returned by list_projects or create_project"}}
+}"#;
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CreateProject {
+    title: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OpenProject {
+    id: String,
+}
+
+pub async fn register_dashboard_tools() -> Result<bool, &'static JsError> {
+    register(vec![
+        dashboard_tool("list_projects", "List projects in this browser with their stable IDs and titles.", READ_SCHEMA, true, list_projects),
+        dashboard_tool("create_project", "Create a named blank project and return its ID. Call open_project to open its editor.", CREATE_SCHEMA, false, create_project),
+        dashboard_tool("open_project", "Open a project by ID in this tab. After navigation, discover the editor's WebMCP tools.", OPEN_SCHEMA, false, open_project),
+    ]).await
+}
+
+type DashboardAction = fn(Option<&'static Unknown>) -> Result<String, String>;
+
+fn dashboard_tool(
+    name: &'static str,
+    description: &'static str,
+    schema: &str,
+    read_only: bool,
+    action: DashboardAction,
+) -> Tool {
+    Tool {
+        name,
+        description,
+        input_schema: parse(schema),
+        annotations: read_only.then_some(Annotations {
+            read_only_hint: true,
+        }),
+        execute: Box::new(move |args| js::promise(async move { dashboard_response(action(args)) })),
+    }
+}
+
+fn dashboard_response(result: Result<String, String>) -> &'static Unknown {
+    match result {
+        Ok(body) => parse(&body),
+        Err(message) => parse(
+            &serde_json::json!({
+                "isError": true,
+                "content": [{ "type": "text", "text": message }]
+            })
+            .to_string(),
+        ),
+    }
+}
+
+fn list_projects(_: Option<&Unknown>) -> Result<String, String> {
+    let (projects, warning) = projects::list();
+    if let Some(error) = warning {
+        return Err(error);
+    }
+    serde_json::to_string(&projects).map_err(|error| error.to_string())
+}
+
+fn create_project(input: Option<&Unknown>) -> Result<String, String> {
+    let CreateProject { title } = decode(input, "Provide a project title.")?;
+    let project = projects::create(&title)?;
+    crate::render_dashboard();
+    serde_json::to_string(&project).map_err(|error| error.to_string())
+}
+
+fn open_project(input: Option<&Unknown>) -> Result<String, String> {
+    let OpenProject { id } = decode(input, "Provide a project ID.")?;
+    let project = projects::find(&id).ok_or("Project not found in this browser.")?;
+    let result = serde_json::to_string(&project).map_err(|error| error.to_string())?;
+    webapi::window_global::location().assign(&project.href());
+    Ok(result)
+}
+
+fn decode<T: serde::de::DeserializeOwned>(
+    input: Option<&Unknown>,
+    error: &str,
+) -> Result<T, String> {
+    let text = input
+        .and_then(|value| json::stringify(value).ok().flatten())
+        .ok_or(error)?;
+    serde_json::from_str(&text).map_err(|_| error.into())
 }
 
 fn parse(text: &str) -> &'static Unknown {

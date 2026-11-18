@@ -63,3 +63,13 @@ await page.webmcp.callTool("edit_layer", {
 ~~~
 
 The [task dashboard test](e2e/design.spec.js) builds a complete mockup this way and verifies that its layers survive a reload.
+
+## Start from the dashboard with WebMCP
+
+Open the Agent Pixel home page in a WebMCP-enabled browser. Discover the dashboard tools with `page.webmcp.tools()`.
+
+- `list_projects` returns the projects in this browser as an array of `{ id, title }` objects.
+- `create_project` takes `{ title }` and returns the new project. Its card appears on the dashboard.
+- `open_project` takes `{ id }` and navigates the current tab to that project's editor. Wait for navigation, discover the editor tools, then call `read_design` or `edit_layer`.
+
+The [dashboard WebMCP test](e2e/dashboard-webmcp.spec.js) exercises the handoff and verifies that the project and edits survive reopening.

@@ -23,7 +23,7 @@ function projectDeserialize_deserialize(json) {
   );
 }
 
-function projectSerialize_serialize(project, json) {
+export function projectSerialize_serialize(project, json) {
   json.beginObject();
   json.key("id");
   json.string(project.id);
@@ -113,6 +113,10 @@ export function list() {
     warning = "Could not read your saved project list.";
   }
   return [projects, warning];
+}
+
+export function find(id) {
+  return list()[0].find((project) => project.id === id);
 }
 
 export function route() {

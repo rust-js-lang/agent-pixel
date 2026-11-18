@@ -67,15 +67,22 @@ const Editor = {
 export function mount() {
   const node = $unwrap(window.document.getElementById("root"), "Editor root");
   const root$1 = createRoot(node);
+  root = root$1;
   const value = Projects.route();
   if (value == null) {
-    root$1.render(Dashboard.home());
+    renderDashboard();
+    (async () => {
+      const value = await Webmcp.registerDashboardTools();
+      if (value.TAG === "Err") {
+        const error = value._0;
+        console.error(error.message);
+      }
+    })();
     return;
   }
   const id = value[0];
   const server = value[1];
-  const [catalog] = Projects.list();
-  const project = catalog.find((project) => project.id === id);
+  const project = Projects.find(id);
   if (project == null) {
     root$1.render(Dashboard.missing());
     return;
@@ -88,7 +95,6 @@ export function mount() {
     },
     true,
   );
-  root = root$1;
   status("Opening document…");
   (async () => {
     const value = await start();
@@ -96,6 +102,12 @@ export function mount() {
       status(value._0);
     }
   })();
+}
+
+export function renderDashboard() {
+  if (root != null) {
+    root.render(Dashboard.home());
+  }
 }
 
 function render() {
@@ -197,7 +209,7 @@ async function start() {
     true,
   );
   render();
-  const result = await Webmcp.registerTools();
+  const result = await Webmcp.registerEditorTools();
   $withBorrowMut(
     editor,
     (editor) => {

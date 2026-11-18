@@ -74,6 +74,10 @@ pub fn list() -> (Vec<Project>, Option<String>) {
     (projects, warning)
 }
 
+pub fn find(id: &str) -> Option<Project> {
+    list().0.into_iter().find(|project| project.id == id)
+}
+
 pub fn route() -> Option<(String, bool)> {
     if let Some(project) = browser::query_value("project") {
         Some((project, false))

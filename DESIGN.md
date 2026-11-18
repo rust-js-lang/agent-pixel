@@ -56,3 +56,5 @@ The release gate is a fresh Playwright session that opens the blank mockup and b
 ## Project dashboard
 
 The root route lists browser projects with artboard previews. A card opens the editor at `?project=<id>`. Each project has a stable ID and its own draft. Orbit study and Web app mockup use their original storage keys. The existing `?design` and `?server` links continue to open their respective editor modes. The project list and new drafts are stored in the current browser.
+
+The dashboard registers `list_projects`, `create_project` and `open_project` with WebMCP. Project creation uses the same catalog operation as the dashboard form. Opening resolves a known project ID to its editor URL. The editor registers its own tools after loading the selected draft.

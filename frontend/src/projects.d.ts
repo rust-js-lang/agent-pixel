@@ -26,6 +26,8 @@ export function list(): [
     string | null | undefined
 ];
 
+export function find(id: string): Project | null | undefined;
+
 export function route(): [
     string,
     boolean

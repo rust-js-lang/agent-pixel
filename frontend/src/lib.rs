@@ -53,12 +53,17 @@ pub fn mount() {
         .get_element_by_id("root")
         .expect("Editor root");
     let root = create_root(node, None);
+    ROOT.set(Some(root));
     let Some((id, server)) = projects::route() else {
-        root.render(dashboard::home());
+        render_dashboard();
+        js::spawn(Box::new(async {
+            if let Err(error) = webmcp::register_dashboard_tools().await {
+                webapi::console::error((error.message(),));
+            }
+        }));
         return;
     };
-    let (catalog, _) = projects::list();
-    let Some(project) = catalog.into_iter().find(|project| project.id == id) else {
+    let Some(project) = projects::find(&id) else {
         root.render(dashboard::missing());
         return;
     };
@@ -66,13 +71,18 @@ pub fn mount() {
         editor.project = project;
         editor.server = server;
     });
-    ROOT.set(Some(root));
     status("Opening document…".into());
     js::spawn(Box::new(async {
         if let Err(error) = start().await {
             status(error);
         }
     }));
+}
+
+fn render_dashboard() {
+    if let Some(root) = ROOT.get() {
+        root.render(dashboard::home());
+    }
 }
 
 fn render() {
@@ -137,7 +147,7 @@ async fn start() -> Result<(), String> {
         });
     });
     render();
-    let result = webmcp::register_tools().await;
+    let result = webmcp::register_editor_tools().await;
     EDITOR.with_borrow_mut(|editor| {
         editor.agent = match result {
             Ok(true) => "WebMCP tools ready".into(),
