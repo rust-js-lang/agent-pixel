@@ -1,4 +1,4 @@
-use crate::{Editor, edit, select, sync_to_server};
+use crate::{Editor, edit, journey, select, sync_to_server};
 use pixel_geometry::{
     BOARD_HEIGHT, BOARD_WIDTH,
     scene::{ComponentInstance, Layer, Patch},
@@ -298,6 +298,68 @@ fn component_picker(disabled: bool) -> JSX::Element {
     }
 }
 
+fn journey_navigation(current: &journey::Screen, preview: bool) -> JSX::Element {
+    let screens = journey::SCREENS.iter().map(|screen| jsx! {
+        <a key={screen.id} href={journey::href(screen.id, preview)}
+            aria-current={if screen.id == current.id { "step" } else { "false" }}>{screen.title}</a>
+    }).collect::<Vec<_>>();
+    let name = if preview {
+        "Edit screen"
+    } else {
+        "Play prototype"
+    };
+    jsx! {
+        <nav className="journey-navigation" aria-label="Journey screens">
+            <h3>"Journey screens"</h3>
+            <div className="journey-steps">{screens}</div>
+            <div className="journey-actions">
+                <a className="journey-mode" href={journey::href(current.id, !preview)}>{name}</a>
+                <a href={journey::HANDOFF}>"Developer handoff ↗"</a>
+            </div>
+        </nav>
+    }
+}
+
+pub(crate) fn prototype(editor: &Editor) -> JSX::Element {
+    let screen = editor.screen.expect("Prototype screen");
+    let scene = editor.document.scene.as_ref();
+    let layers = scene.map(|scene| scene.layers.iter().map(preview_layer).collect::<Vec<_>>());
+    let action = scene.and_then(|scene| scene.layers.iter().find(|layer| layer.id == "action"));
+    let hotspot = action.map(|layer| {
+        let placement = CSSProperties::new().left(percent(layer.x, BOARD_WIDTH))
+            .top(percent(layer.y, BOARD_HEIGHT)).width(percent(layer.width, BOARD_WIDTH))
+            .height(percent(layer.height, BOARD_HEIGHT));
+        jsx! {
+            <a className="prototype-hotspot" href={journey::href(screen.next, true)} style={placement}
+                aria-label={screen.primary} />
+        }
+    });
+    jsx! {
+        <>
+            <header>
+                <b className="brand"><i>"▦"</i>" Agent Pixel"</b>
+                <a href="./">"← Projects"</a>
+            </header>
+            <main className="journey-preview">
+                <section className="prototype-canvas" aria-label="Prototype artboard">
+                    <h1>{screen.title}</h1>
+                    <div id="art" className="mockup">
+                        <div aria-hidden="true">{layers}</div>
+                        {hotspot}
+                    </div>
+                </section>
+                <div className="prototype-guide">
+                    {journey_navigation(screen, true)}
+                    {(screen.id == "review").then(|| jsx! {
+                        <a href={journey::href("error", true)} className="simulate-failure">"Simulate save failure"</a>
+                    })}
+                </div>
+            </main>
+            <footer role="status" id="status">{editor.status.clone()}</footer>
+        </>
+    }
+}
+
 pub(crate) fn editor(editor: &Editor) -> JSX::Element {
     let layers = editor
         .document
@@ -332,6 +394,7 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
             },
         );
     let document_title = editor.project.title.as_str();
+    let screen = editor.screen;
     let poster = editor.project.is_poster();
     let disabled = editor.busy || editor.document.scene.is_none();
     jsx! {
@@ -342,14 +405,15 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
                 <a href="./">"← Projects"</a>
                 <a href="https://github.com/rust-js-lang/agent-pixel/blob/main/DESIGN.md">"Design doc ↗"</a>
             </header>
-            <main>
+            <main className={if screen.is_some() { "journey-editor" } else { "design-editor" }}>
                 <aside>
                     <div className="eyebrow">"DOCUMENT"</div><h2>{document_title}</h2>
-                    <p>{if !poster { "Mobile artboard" } else { "Poster composition" }}</p><hr /><h3>"Layers"</h3><div id="layers">{layer_list}</div>
+                    <p>{if !poster { "Mobile artboard" } else { "Poster composition" }}</p>
+                    {screen.map(|screen| journey_navigation(screen, false))}<hr /><h3>"Layers"</h3><div id="layers">{layer_list}</div>
                 </aside>
                 <section className="workspace" aria-label="Canvas">
                     <div className="sheet">
-                        <div className="legend">"ARTBOARD 01" <span>{format!("{BOARD_WIDTH} × {BOARD_HEIGHT}")}</span></div>
+                        <div className="legend">{screen.map_or("ARTBOARD 01", |screen| screen.title)} <span>{format!("{BOARD_WIDTH} × {BOARD_HEIGHT}")}</span></div>
                         <div id="art" className={if !poster { "mockup" } else { "poster" }}>
                             {(poster).then(|| jsx! { <div className="imprint">"FORM STUDIES" <span>"SERIES 01 / 03"</span></div> })}
                             <div id="shapes">{shape_list}</div>

@@ -40,15 +40,20 @@ impl Project {
                 .expect("Valid Current demo document"),
             CANOPY => serde_json::from_str(include_str!("../demos/canopy-ui.json"))
                 .expect("Valid Canopy UI demo document"),
+            crate::journey::PROJECT => crate::journey::SCREENS[0].initial_scene(),
             _ => Scene::blank(),
         }
     }
 
     pub fn load(&self, server: bool) -> Result<Option<Document>, String> {
-        let json = browser::load_draft(&self.storage_key(server)).map_err(crate::message)?;
-        json.map(|json| serde_json::from_str(&json).map_err(|error| error.to_string()))
-            .transpose()
+        load_document(&self.storage_key(server))
     }
+}
+
+pub fn load_document(key: &str) -> Result<Option<Document>, String> {
+    let json = browser::load_draft(key).map_err(crate::message)?;
+    json.map(|json| serde_json::from_str(&json).map_err(|error| error.to_string()))
+        .transpose()
 }
 
 fn saved_projects() -> Result<Vec<Project>, String> {
@@ -69,6 +74,10 @@ pub fn list() -> (Vec<Project>, Option<String>) {
             title: "Current — Home energy".into(),
         },
         canopy_library(),
+        Project {
+            id: crate::journey::PROJECT.into(),
+            title: "Current — Reminder journey".into(),
+        },
     ];
     let legacy = blank_mockup();
     if legacy

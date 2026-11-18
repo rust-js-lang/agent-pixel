@@ -1,0 +1,342 @@
+{
+  "version": 1,
+  "layers": [
+    {
+      "id": "paper",
+      "kind": "rectangle",
+      "x": 0,
+      "y": 0,
+      "width": 480,
+      "height": 600,
+      "fill": "#f2f4ed"
+    },
+    {
+      "id": "current-mark",
+      "kind": "ellipse",
+      "x": 26,
+      "y": 23,
+      "width": 25,
+      "height": 25,
+      "fill": "#133d35"
+    },
+    {
+      "id": "mark-arrow",
+      "kind": "text",
+      "x": 32,
+      "y": 23,
+      "width": 17,
+      "height": 23,
+      "fill": "#c8f382",
+      "text": "↗",
+      "fontSize": 15
+    },
+    {
+      "id": "brand",
+      "kind": "text",
+      "x": 62,
+      "y": 25,
+      "width": 190,
+      "height": 20,
+      "fill": "#133d35",
+      "text": "C U R R E N T",
+      "fontSize": 12
+    },
+    {
+      "id": "journey-step",
+      "kind": "text",
+      "x": 322,
+      "y": 25,
+      "width": 132,
+      "height": 20,
+      "fill": "#53645c",
+      "text": "SETUP · 1 OF 2",
+      "fontSize": 11
+    },
+    {
+      "id": "header-divider",
+      "kind": "rectangle",
+      "x": 26,
+      "y": 62,
+      "width": 428,
+      "height": 1,
+      "fill": "#d8e2d5"
+    },
+    {
+      "id": "page-title",
+      "kind": "text",
+      "x": 26,
+      "y": 82,
+      "width": 428,
+      "height": 50,
+      "fill": "#162d29",
+      "text": "Set your schedule",
+      "fontSize": 34
+    },
+    {
+      "id": "subtitle",
+      "kind": "text",
+      "x": 26,
+      "y": 139,
+      "width": 428,
+      "height": 48,
+      "fill": "#53645c",
+      "text": "Choose a time and the days you want Current to remind you.",
+      "fontSize": 15
+    },
+    {
+      "id": "time-card",
+      "kind": "rectangle",
+      "x": 26,
+      "y": 209,
+      "width": 428,
+      "height": 89,
+      "fill": "#ffffff"
+    },
+    {
+      "id": "time-label",
+      "kind": "text",
+      "x": 45,
+      "y": 223,
+      "width": 250,
+      "height": 18,
+      "fill": "#53645c",
+      "text": "REMINDER TIME",
+      "fontSize": 12
+    },
+    {
+      "id": "time-value",
+      "kind": "text",
+      "x": 44,
+      "y": 248,
+      "width": 310,
+      "height": 37,
+      "fill": "#162d29",
+      "text": "9:00 PM",
+      "fontSize": 27
+    },
+    {
+      "id": "time-zone",
+      "kind": "text",
+      "x": 330,
+      "y": 261,
+      "width": 108,
+      "height": 20,
+      "fill": "#53645c",
+      "text": "LOCAL TIME",
+      "fontSize": 11
+    },
+    {
+      "id": "repeat-card",
+      "kind": "rectangle",
+      "x": 26,
+      "y": 315,
+      "width": 428,
+      "height": 138,
+      "fill": "#ffffff"
+    },
+    {
+      "id": "days-label",
+      "kind": "text",
+      "x": 45,
+      "y": 330,
+      "width": 250,
+      "height": 18,
+      "fill": "#53645c",
+      "text": "REPEAT ON",
+      "fontSize": 12
+    },
+    {
+      "id": "day-0",
+      "kind": "ellipse",
+      "x": 45,
+      "y": 366,
+      "width": 36,
+      "height": 36,
+      "fill": "#133d35"
+    },
+    {
+      "id": "initial-0",
+      "kind": "text",
+      "x": 57,
+      "y": 372,
+      "width": 21,
+      "height": 24,
+      "fill": "#ffffff",
+      "text": "M",
+      "fontSize": 14
+    },
+    {
+      "id": "day-1",
+      "kind": "ellipse",
+      "x": 98,
+      "y": 366,
+      "width": 36,
+      "height": 36,
+      "fill": "#133d35"
+    },
+    {
+      "id": "initial-1",
+      "kind": "text",
+      "x": 110,
+      "y": 372,
+      "width": 21,
+      "height": 24,
+      "fill": "#ffffff",
+      "text": "T",
+      "fontSize": 14
+    },
+    {
+      "id": "day-2",
+      "kind": "ellipse",
+      "x": 151,
+      "y": 366,
+      "width": 36,
+      "height": 36,
+      "fill": "#133d35"
+    },
+    {
+      "id": "initial-2",
+      "kind": "text",
+      "x": 163,
+      "y": 372,
+      "width": 21,
+      "height": 24,
+      "fill": "#ffffff",
+      "text": "W",
+      "fontSize": 14
+    },
+    {
+      "id": "day-3",
+      "kind": "ellipse",
+      "x": 204,
+      "y": 366,
+      "width": 36,
+      "height": 36,
+      "fill": "#133d35"
+    },
+    {
+      "id": "initial-3",
+      "kind": "text",
+      "x": 216,
+      "y": 372,
+      "width": 21,
+      "height": 24,
+      "fill": "#ffffff",
+      "text": "T",
+      "fontSize": 14
+    },
+    {
+      "id": "day-4",
+      "kind": "ellipse",
+      "x": 257,
+      "y": 366,
+      "width": 36,
+      "height": 36,
+      "fill": "#133d35"
+    },
+    {
+      "id": "initial-4",
+      "kind": "text",
+      "x": 269,
+      "y": 372,
+      "width": 21,
+      "height": 24,
+      "fill": "#ffffff",
+      "text": "F",
+      "fontSize": 14
+    },
+    {
+      "id": "day-5",
+      "kind": "ellipse",
+      "x": 310,
+      "y": 366,
+      "width": 36,
+      "height": 36,
+      "fill": "#e8eee5"
+    },
+    {
+      "id": "initial-5",
+      "kind": "text",
+      "x": 322,
+      "y": 372,
+      "width": 21,
+      "height": 24,
+      "fill": "#53645c",
+      "text": "S",
+      "fontSize": 14
+    },
+    {
+      "id": "day-6",
+      "kind": "ellipse",
+      "x": 363,
+      "y": 366,
+      "width": 36,
+      "height": 36,
+      "fill": "#e8eee5"
+    },
+    {
+      "id": "initial-6",
+      "kind": "text",
+      "x": 375,
+      "y": 372,
+      "width": 21,
+      "height": 24,
+      "fill": "#53645c",
+      "text": "S",
+      "fontSize": 14
+    },
+    {
+      "id": "repeat-summary",
+      "kind": "text",
+      "x": 45,
+      "y": 418,
+      "width": 375,
+      "height": 20,
+      "fill": "#53645c",
+      "text": "Monday–Friday selected",
+      "fontSize": 13
+    },
+    {
+      "id": "action",
+      "kind": "rectangle",
+      "x": 26,
+      "y": 510,
+      "width": 428,
+      "height": 50,
+      "fill": "#133d35"
+    },
+    {
+      "id": "action-label",
+      "kind": "text",
+      "x": 44,
+      "y": 518,
+      "width": 367,
+      "height": 34,
+      "fill": "#ffffff",
+      "text": "Review reminder",
+      "fontSize": 17
+    },
+    {
+      "id": "action-arrow",
+      "kind": "text",
+      "x": 418,
+      "y": 519,
+      "width": 27,
+      "height": 33,
+      "fill": "#c8f382",
+      "text": "→",
+      "fontSize": 20
+    },
+    {
+      "id": "footer",
+      "kind": "text",
+      "x": 26,
+      "y": 570,
+      "width": 428,
+      "height": 19,
+      "fill": "#53645c",
+      "text": "Changes are saved after you confirm.",
+      "fontSize": 11
+    }
+  ]
+}

@@ -21,6 +21,14 @@ export const Project: {
     };
 };
 
+export function loadDocument(key: string): {
+    TAG: "Ok";
+    _0: Document | null | undefined;
+} | {
+    TAG: "Err";
+    _0: string;
+};
+
 export function list(): [
     Project[],
     string | null | undefined

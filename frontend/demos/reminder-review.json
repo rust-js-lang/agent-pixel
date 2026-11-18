@@ -1,0 +1,253 @@
+{
+  "version": 1,
+  "layers": [
+    {
+      "id": "paper",
+      "kind": "rectangle",
+      "x": 0,
+      "y": 0,
+      "width": 480,
+      "height": 600,
+      "fill": "#f2f4ed"
+    },
+    {
+      "id": "current-mark",
+      "kind": "ellipse",
+      "x": 26,
+      "y": 23,
+      "width": 25,
+      "height": 25,
+      "fill": "#133d35"
+    },
+    {
+      "id": "mark-arrow",
+      "kind": "text",
+      "x": 32,
+      "y": 23,
+      "width": 17,
+      "height": 23,
+      "fill": "#c8f382",
+      "text": "↗",
+      "fontSize": 15
+    },
+    {
+      "id": "brand",
+      "kind": "text",
+      "x": 62,
+      "y": 25,
+      "width": 190,
+      "height": 20,
+      "fill": "#133d35",
+      "text": "C U R R E N T",
+      "fontSize": 12
+    },
+    {
+      "id": "journey-step",
+      "kind": "text",
+      "x": 322,
+      "y": 25,
+      "width": 132,
+      "height": 20,
+      "fill": "#53645c",
+      "text": "SETUP · 2 OF 2",
+      "fontSize": 11
+    },
+    {
+      "id": "header-divider",
+      "kind": "rectangle",
+      "x": 26,
+      "y": 62,
+      "width": 428,
+      "height": 1,
+      "fill": "#d8e2d5"
+    },
+    {
+      "id": "page-title",
+      "kind": "text",
+      "x": 26,
+      "y": 82,
+      "width": 428,
+      "height": 50,
+      "fill": "#162d29",
+      "text": "Review reminder",
+      "fontSize": 34
+    },
+    {
+      "id": "subtitle",
+      "kind": "text",
+      "x": 26,
+      "y": 139,
+      "width": 428,
+      "height": 48,
+      "fill": "#53645c",
+      "text": "Check when and where Current will send your reminder.",
+      "fontSize": 15
+    },
+    {
+      "id": "summary-card",
+      "kind": "rectangle",
+      "x": 26,
+      "y": 205,
+      "width": 428,
+      "height": 178,
+      "fill": "#ffffff"
+    },
+    {
+      "id": "time-label",
+      "kind": "text",
+      "x": 45,
+      "y": 221,
+      "width": 180,
+      "height": 32,
+      "fill": "#53645c",
+      "text": "Time",
+      "fontSize": 13
+    },
+    {
+      "id": "time-value",
+      "kind": "text",
+      "x": 233,
+      "y": 221,
+      "width": 198,
+      "height": 32,
+      "fill": "#162d29",
+      "text": "9:00 PM local",
+      "fontSize": 16
+    },
+    {
+      "id": "separator-time",
+      "kind": "rectangle",
+      "x": 45,
+      "y": 260,
+      "width": 390,
+      "height": 1,
+      "fill": "#d8e2d5"
+    },
+    {
+      "id": "repeat-label",
+      "kind": "text",
+      "x": 45,
+      "y": 269,
+      "width": 180,
+      "height": 32,
+      "fill": "#53645c",
+      "text": "Repeats",
+      "fontSize": 13
+    },
+    {
+      "id": "repeat-value",
+      "kind": "text",
+      "x": 233,
+      "y": 269,
+      "width": 198,
+      "height": 32,
+      "fill": "#162d29",
+      "text": "Monday–Friday",
+      "fontSize": 16
+    },
+    {
+      "id": "separator-repeat",
+      "kind": "rectangle",
+      "x": 45,
+      "y": 308,
+      "width": 390,
+      "height": 1,
+      "fill": "#d8e2d5"
+    },
+    {
+      "id": "channel-label",
+      "kind": "text",
+      "x": 45,
+      "y": 319,
+      "width": 180,
+      "height": 32,
+      "fill": "#53645c",
+      "text": "Delivery",
+      "fontSize": 13
+    },
+    {
+      "id": "channel-value",
+      "kind": "text",
+      "x": 233,
+      "y": 319,
+      "width": 198,
+      "height": 32,
+      "fill": "#162d29",
+      "text": "Push notification",
+      "fontSize": 16
+    },
+    {
+      "id": "permission-note",
+      "kind": "rectangle",
+      "x": 26,
+      "y": 400,
+      "width": 428,
+      "height": 71,
+      "fill": "#e2ecd7"
+    },
+    {
+      "id": "permission-title",
+      "kind": "text",
+      "x": 44,
+      "y": 410,
+      "width": 384,
+      "height": 23,
+      "fill": "#162d29",
+      "text": "Allow notifications when prompted",
+      "fontSize": 15
+    },
+    {
+      "id": "permission-body",
+      "kind": "text",
+      "x": 44,
+      "y": 439,
+      "width": 384,
+      "height": 18,
+      "fill": "#53645c",
+      "text": "You can change delivery in Settings.",
+      "fontSize": 12
+    },
+    {
+      "id": "action",
+      "kind": "rectangle",
+      "x": 26,
+      "y": 510,
+      "width": 428,
+      "height": 50,
+      "fill": "#133d35"
+    },
+    {
+      "id": "action-label",
+      "kind": "text",
+      "x": 44,
+      "y": 518,
+      "width": 367,
+      "height": 34,
+      "fill": "#ffffff",
+      "text": "Save reminder",
+      "fontSize": 17
+    },
+    {
+      "id": "action-arrow",
+      "kind": "text",
+      "x": 418,
+      "y": 519,
+      "width": 27,
+      "height": 33,
+      "fill": "#c8f382",
+      "text": "→",
+      "fontSize": 20
+    },
+    {
+      "id": "footer",
+      "kind": "text",
+      "x": 26,
+      "y": 570,
+      "width": 428,
+      "height": 19,
+      "fill": "#53645c",
+      "text": "You can edit or turn this off from Home energy.",
+      "fontSize": 11
+    }
+  ]
+}

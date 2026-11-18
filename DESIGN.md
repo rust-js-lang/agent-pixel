@@ -62,3 +62,7 @@ The dashboard registers `list_projects`, `create_project` and `open_project` wit
 ## Component reuse
 
 The Canopy UI library reads variant layers from the current browser's Canopy project and preserves their relative positions and stacking order. The worker places a copy of the variant as one transaction and assigns new layer IDs in the destination. It rejects a placement that exceeds the artboard or layer limit before any change is published. Each new insertion stores its source variant and placement alongside the rendered layers. Open editors refresh on a library storage event, and reopening a project resolves instances against the latest saved library. Switching preserves the instance ID, stacking position, and placement. A switch that exceeds the artboard is rejected. If a source edit grows an existing variant past the artboard edge, its instance shifts inward to fit. Older scenes with no instance records continue to open as before.
+
+## Multi-screen journey demo
+
+Current — Reminder journey shows the steps of setting an off-peak reminder, including a save-failure branch. The project uses a screen ID in its URL and saves each screen independently. The preview uses the action layer’s bounds to place a clickable link over each screen’s primary action. Developer handoff lives beside the source so the interaction and validation rules can be reviewed with the artboards.

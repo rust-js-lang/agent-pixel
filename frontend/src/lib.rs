@@ -1,6 +1,7 @@
 mod browser;
 mod components;
 mod dashboard;
+mod journey;
 mod projects;
 mod transport;
 mod view;
@@ -26,6 +27,8 @@ struct Editor {
     selected: Option<String>,
     server: bool,
     project: Project,
+    screen: Option<&'static journey::Screen>,
+    preview: bool,
     busy: bool,
     fields_version: u32,
     status: String,
@@ -42,9 +45,24 @@ impl Editor {
         self.document.scene = Some(scene);
     }
 
+    fn storage_key(&self) -> String {
+        let base = self.project.storage_key(self.server);
+        match self.screen {
+            Some(screen) if screen.id != journey::SCREENS[0].id => format!("{base}:{}", screen.id),
+            _ => base,
+        }
+    }
+
+    fn initial_scene(&self) -> Scene {
+        match self.screen {
+            Some(screen) => screen.initial_scene(),
+            None => self.project.initial_scene(),
+        }
+    }
+
     fn save_local(&self) -> Result<(), String> {
         let body = serde_json::to_string(&self.document).map_err(|e| e.to_string())?;
-        browser::save_draft(&self.project.storage_key(self.server), Some(&body)).map_err(message)
+        browser::save_draft(&self.storage_key(), Some(&body)).map_err(message)
     }
 }
 
@@ -69,6 +87,15 @@ pub fn mount() {
         return;
     };
     EDITOR.with_borrow_mut(|editor| {
+        if project.id == journey::PROJECT {
+            editor.screen = Some(
+                browser::query_value("screen")
+                    .as_deref()
+                    .and_then(journey::find)
+                    .unwrap_or(&journey::SCREENS[0]),
+            );
+            editor.preview = browser::workspace_query("preview");
+        }
         editor.project = project;
         editor.server = server;
     });
@@ -88,7 +115,13 @@ fn render_dashboard() {
 
 fn render() {
     if let Some(root) = ROOT.get() {
-        let element = EDITOR.with_borrow(view::editor);
+        let element = EDITOR.with_borrow(|editor| {
+            if editor.preview {
+                view::prototype(editor)
+            } else {
+                view::editor(editor)
+            }
+        });
         root.render(element);
     }
 }
@@ -117,8 +150,8 @@ async fn fetch_document(body: Option<&str>) -> Result<Document, String> {
 }
 
 async fn start() -> Result<(), String> {
-    let (project, server) = EDITOR.with_borrow(|editor| (editor.project.clone(), editor.server));
-    let local = project.load(server);
+    let (key, server) = EDITOR.with_borrow(|editor| (editor.storage_key(), editor.server));
+    let local = projects::load_document(&key);
     let (saved, mut warning) = match local {
         Ok(Some(saved)) => (saved, None),
         Ok(None) if server => (fetch_document(None).await?, None),
@@ -128,12 +161,14 @@ async fn start() -> Result<(), String> {
             Some("Browser draft unavailable".to_string()),
         ),
     };
-    let scene = saved.scene.unwrap_or_else(|| project.initial_scene());
+    let scene = saved
+        .scene
+        .unwrap_or_else(|| EDITOR.with_borrow(Editor::initial_scene));
     let design = match restore(&scene).await {
         Ok(restored) => restored,
         Err(error) => {
             warning = Some(error);
-            restore(&project.initial_scene()).await?
+            restore(&EDITOR.with_borrow(Editor::initial_scene)).await?
         }
     };
     EDITOR.with_borrow_mut(|editor| {
@@ -161,6 +196,9 @@ async fn start() -> Result<(), String> {
         None,
     );
     render();
+    if EDITOR.with_borrow(|editor| editor.preview) {
+        return Ok(());
+    }
     let result = webmcp::register_editor_tools().await;
     EDITOR.with_borrow_mut(|editor| {
         editor.agent = match result {

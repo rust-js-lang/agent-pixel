@@ -79,3 +79,7 @@ The [dashboard WebMCP test](e2e/dashboard-webmcp.spec.js) exercises the handoff 
 In an editor, expand **Canopy UI components**, choose a variant, set its position, and select **Insert component**. Insertions create linked instances of the Canopy UI variants saved in this browser. Edit the main component in Canopy UI to update instances in open editors and when a project is reopened. Select any layer of an instance to switch its variant in the inspector. Existing independent copies remain editable.
 
 An agent can call `list_components` for the variant IDs, then call `insert_component` with `{ id, x, y }`. The coordinates place the variant's top-left corner in artboard pixels. The result includes the new layer IDs and the updated scene. Use the instance ID from `scene.instances` with `switch_component_variant` and a variant ID from the same family.
+
+## User journey and developer handoff
+
+Open **Current — Reminder journey** for five editable screens of the off-peak reminder feature. Select **Play prototype** and follow the primary actions. The review screen also links to a simulated save failure. Each screen has its own saved draft. The [developer handoff](handoff/CURRENT-REMINDERS.md) documents the screen map, state rules, and acceptance criteria.

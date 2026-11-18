@@ -6,6 +6,8 @@ import {
   documentDeserialize_deserialize,
   sceneDeserialize_deserialize,
 } from "../../core/src/scene.js";
+import { PROJECT, Screen } from "./journey.js";
+import * as Journey from "./journey.js";
 import { message } from "./lib.js";
 import {
   $debugJsonError,
@@ -88,30 +90,36 @@ export const Project = {
           "Valid Canopy UI demo document",
           $debugJsonError,
         );
+      case PROJECT:
+        return Screen.initialScene(Journey.SCREENS[0]);
       default:
         return Scene.blank();
     }
   },
 
   load(project, server) {
-    const result = Browser.loadDraft(Project.storageKey(project, server));
-    const result$1 = result.TAG === "Err" ? { TAG: "Err", _0: message(result._0) } : result;
-    if (result$1.TAG === "Err") {
-      return result$1;
-    }
-    const json = result$1._0;
-    function map(json) {
-      const result = $fromJson(json, documentDeserialize_deserialize);
-      return result.TAG === "Err" ? { TAG: "Err", _0: $displayJsonError(result._0) } : result;
-    }
-    const option = json != null ? map(json) : undefined;
-    return option == null
-      ? { TAG: "Ok" }
-      : option.TAG === "Ok"
-        ? { TAG: "Ok", _0: option._0 }
-        : option;
+    return loadDocument(Project.storageKey(project, server));
   },
 };
+
+export function loadDocument(key) {
+  const result = Browser.loadDraft(key);
+  const result$1 = result.TAG === "Err" ? { TAG: "Err", _0: message(result._0) } : result;
+  if (result$1.TAG === "Err") {
+    return result$1;
+  }
+  const json = result$1._0;
+  function map(json) {
+    const result = $fromJson(json, documentDeserialize_deserialize);
+    return result.TAG === "Err" ? { TAG: "Err", _0: $displayJsonError(result._0) } : result;
+  }
+  const option = json != null ? map(json) : undefined;
+  return option == null
+    ? { TAG: "Ok" }
+    : option.TAG === "Ok"
+      ? { TAG: "Ok", _0: option._0 }
+      : option;
+}
 
 function savedProjects() {
   const result = Browser.loadDraft(CATALOG);
@@ -139,6 +147,10 @@ export function list() {
       title: "Current — Home energy",
     },
     canopyLibrary(),
+    {
+      id: Journey.PROJECT,
+      title: "Current — Reminder journey",
+    },
   ];
   const legacy = blankMockup();
   const result = Project.load(legacy, false);

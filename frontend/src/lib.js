@@ -20,6 +20,8 @@ import {
 import * as Browser from "./browser.js";
 import * as Components from "./components.js";
 import * as Dashboard from "./dashboard.jsx";
+import { Screen } from "./journey.js";
+import * as Journey from "./journey.js";
 import * as View from "./view.jsx";
 import * as Webmcp from "./webmcp.js";
 import {
@@ -39,6 +41,7 @@ const editor = {
   document: { revision: 0n },
   server: false,
   project: { id: "", title: "" },
+  preview: false,
   busy: false,
   fieldsVersion: 0,
   status: "",
@@ -55,6 +58,19 @@ const Editor = {
     editor.document.scene = scene;
   },
 
+  storageKey(editor) {
+    const base = Project.storageKey(editor.project, editor.server);
+    return editor.screen != null && editor.screen.id !== Journey.SCREENS[0].id
+      ? `${base}:${editor.screen.id}`
+      : base;
+  },
+
+  initialScene(editor) {
+    return editor.screen != null
+      ? Screen.initialScene(editor.screen)
+      : Project.initialScene(editor.project);
+  },
+
   saveLocal(editor) {
     const result = $toJson(editor.document, documentSerialize_serialize, false);
     const result$1 =
@@ -63,7 +79,7 @@ const Editor = {
       return result$1;
     }
     const body = result$1._0;
-    const result$2 = Browser.saveDraft(Project.storageKey(editor.project, editor.server), body);
+    const result$2 = Browser.saveDraft(Editor.storageKey(editor), body);
     return result$2.TAG === "Err" ? { TAG: "Err", _0: message(result$2._0) } : result$2;
   },
 };
@@ -94,6 +110,11 @@ export function mount() {
   $withBorrowMut(
     editor,
     (editor) => {
+      if (project.id === Journey.PROJECT) {
+        const option = Browser.queryValue("screen");
+        editor.screen = (option != null ? Journey.find(option) : undefined) ?? Journey.SCREENS[0];
+        editor.preview = Browser.workspaceQuery("preview");
+      }
       editor.project = project;
       editor.server = server;
     },
@@ -117,7 +138,11 @@ export function renderDashboard() {
 function render() {
   const root$1 = root;
   if (root$1 != null) {
-    const element = $withBorrow(editor, View.editor, true);
+    const element = $withBorrow(
+      editor,
+      (editor) => (editor.preview ? View.prototype(editor) : View.editor(editor)),
+      true,
+    );
     root$1.render(element);
   }
 }
@@ -167,8 +192,12 @@ async function fetchDocument(body) {
 }
 
 async function start() {
-  const [project, server] = $withBorrow(editor, (editor) => [editor.project, editor.server], true);
-  const local = Project.load(project, server);
+  const [key, server] = $withBorrow(
+    editor,
+    (editor) => [Editor.storageKey(editor), editor.server],
+    true,
+  );
+  const local = Projects.loadDocument(key);
   let tmp;
   if (local.TAG === "Ok") {
     if (local._0 != null) {
@@ -187,14 +216,14 @@ async function start() {
   }
   const saved = tmp[0];
   let warning = tmp[1];
-  const scene = saved.scene ?? Project.initialScene(project);
+  const scene = saved.scene ?? $withBorrow(editor, Editor.initialScene, true);
   const value = await restore(scene);
   let design;
   if (value.TAG === "Ok") {
     design = value._0;
   } else {
     warning = value._0;
-    const result = await restore(Project.initialScene(project));
+    const result = await restore($withBorrow(editor, Editor.initialScene, true));
     if (result.TAG === "Err") {
       return result;
     }
@@ -220,6 +249,9 @@ async function start() {
     }
   });
   render();
+  if ($withBorrow(editor, (editor) => editor.preview, true)) {
+    return { TAG: "Ok" };
+  }
   const result = await Webmcp.registerEditorTools();
   $withBorrowMut(
     editor,

@@ -5,7 +5,7 @@ test("open projects from the dashboard and keep their drafts separate", async ({
   await expect(page.getByRole("heading", { name: "Design projects" })).toBeVisible();
   const orbit = page.getByRole("link", { name: "Orbit study 7 layers" });
   const current = page.getByRole("link", { name: "Current — Home energy 50 layers" });
-  await expect(page.getByRole("region", { name: "Projects" }).getByRole("link")).toHaveCount(3);
+  await expect(page.getByRole("region", { name: "Projects" }).getByRole("link")).toHaveCount(4);
   await expect(orbit).toBeVisible();
   await current.click();
   await expect(page).toHaveURL(/\?project=current$/);
