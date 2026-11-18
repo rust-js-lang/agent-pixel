@@ -46,3 +46,9 @@ For the small poster, copy a committed snapshot across the worker boundary once 
 1. **Pages editor.** Open the project URL in a fresh browser, edit a shape, reload, and recover it. Invoke a registered tool, inspect its result and try an invalid edit. Rebuild the deployed page from a clean checkout.
 2. **Native document service.** Save a browser-created document, restart the service, load it again and reject a stale concurrent save. Run the same geometry fixtures in both targets.
 3. **Broader design workflow.** Add editable typography, grouped layers, undo transactions and export. Use real agent layout tasks to decide the order. Multi-user collaboration needs a separate conflict model.
+
+## Agent-designed web app
+
+The next milestone starts with a blank 480 × 600 mockup for a mobile web app. Its draft is independent from the example poster. The agent reads the artboard with `read_design`, adds editable rectangles, ellipses and text with `edit_layer`, then reads back the ordered layer list and stable IDs. Text layers carry their content, font size, color and geometry. The editor also exposes those fields to the person viewing the design.
+
+The release gate is a fresh Playwright session that opens the blank mockup and builds a task dashboard using WebMCP calls alone. The test verifies the rendered headings and cards, edits a layer by ID, reloads and compares the restored design. The result is an editable mockup for review and implementation.
