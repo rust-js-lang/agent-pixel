@@ -42,7 +42,21 @@ export function previous(key: string, expected: string): {
     _0: string;
 };
 
-export function commit(key: string, expected: string | null | undefined, document: Document, title: string, library?: ComponentVariant[] | null | undefined): Promise<{
+export function snapshot(key: string, revision: string, document: Document): {
+    TAG: "Ok";
+    _0: string;
+} | {
+    TAG: "Err";
+    _0: string;
+};
+
+export interface Location {
+    key: string;
+    projectId: string;
+    screenId: string;
+}
+
+export function commit(location: Location, expected: string | null | undefined, document: Document, title: string, library?: ComponentVariant[] | null | undefined): Promise<{
     TAG: "Ok";
     _0: Commit;
 } | {

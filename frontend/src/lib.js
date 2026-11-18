@@ -6,6 +6,7 @@ export { serveWorker } from "./transport.js";
 import { Project, projectSerialize_serialize } from "./projects.js";
 import * as Projects from "./projects.js";
 import { createRoot } from "react-dom/client";
+import { screenInfoSerialize_serialize } from "../../core/src/bundle.js";
 import {
   Scene,
   layerNodeSerialize_serialize,
@@ -24,13 +25,14 @@ import {
   patchSerialize_serialize,
   sceneSerialize_serialize,
 } from "../../core/src/scene.js";
+import { ProjectSource } from "./backup.js";
 import * as Backup from "./backup.js";
 import * as Browser from "./browser.js";
 import * as Components from "./components.js";
 import * as Dashboard from "./dashboard.jsx";
 import * as Drafts from "./drafts.js";
-import { Screen } from "./journey.js";
 import * as Journey from "./journey.js";
+import * as Screens from "./screens.js";
 import * as View from "./view.jsx";
 import * as Webmcp from "./webmcp.js";
 import * as Zoom from "./zoom.js";
@@ -42,9 +44,7 @@ import {
   $f64Min,
   $f64ToInt,
   $fromJson,
-  $index,
   $jsonValueWrite,
-  $position,
   $round,
   $toJson,
   $toJsonValue,
@@ -63,7 +63,8 @@ export const editor = {
   history: { undo: [], redo: [] },
   server: false,
   project: { id: "", title: "" },
-  screens: [],
+  screenCatalog: { revision: "", legacyBaseId: "", screens: [] },
+  screenRemoved: false,
   poster: false,
   assetsOpen: false,
   preview: false,
@@ -85,12 +86,14 @@ export const Editor = {
   },
 
   storageKey(editor) {
-    function keep(screen) {
-      const first = editor.screens[0];
-      return first != null && first.id !== screen.id;
-    }
-    const screen = editor.screen != null && keep(editor.screen) ? editor.screen : undefined;
-    return Project.screenKey(editor.project, editor.server, screen?.id);
+    return editor.screen != null
+      ? Project.screenKey(
+          editor.project,
+          editor.server,
+          editor.screenCatalog.legacyBaseId,
+          editor.screen.id,
+        )
+      : Project.storageKey(editor.project, editor.server);
   },
 
   initialScene(editor) {
@@ -123,9 +126,23 @@ export function mount() {
 
 async function bootstrap(root) {
   const result = await Drafts.reloadCache();
-  const warning = result.TAG === "Err" ? result._0 : undefined;
+  let warning = result.TAG === "Err" ? result._0 : undefined;
+  const result$1 = await Screens.reloadCache();
+  warning = (result$1.TAG === "Err" ? result$1._0 : undefined) ?? warning;
   window.addEventListener("storage", (event) => {
     const key = event.key;
+    if (key === "agent-pixel:screens-changed") {
+      (async () => {
+        if ((await Screens.reloadCache()).TAG === "Ok") {
+          await Drafts.reloadCache();
+          if (Projects.route() == null) {
+            renderDashboard();
+          } else {
+            refreshScreenCatalog();
+          }
+        }
+      })();
+    }
     if (key === "agent-pixel:projects-changed") {
       (async () => {
         await Projects.reloadCache();
@@ -151,9 +168,9 @@ async function bootstrap(root) {
   if (value == null) {
     renderDashboard();
     (async () => {
-      const value$1 = await Webmcp.registerDashboardTools();
-      if (value$1.TAG === "Err") {
-        const error = value$1._0;
+      const value = await Webmcp.registerDashboardTools();
+      if (value.TAG === "Err") {
+        const error = value._0;
         console.error(error.message);
       }
     })();
@@ -167,32 +184,39 @@ async function bootstrap(root) {
     root.render(error != null ? Dashboard.unavailable(error) : Dashboard.missing());
     return;
   }
-  const value$1 = Backup.saved(project);
-  if (value$1.TAG === "Ok") {
-    const bundle = value$1._0;
-    const screenId = Browser.queryValue("screen");
+  const value$2 = Backup.source(project);
+  if (value$2.TAG === "Ok") {
+    const source = value$2._0;
+    const catalog = Screens.catalog(project, ProjectSource.screenInfo(source));
+    const requested = server ? catalog.legacyBaseId : Browser.queryValue("screen");
+    let current =
+      requested != null
+        ? catalog.screens.find((info) => info.id === requested)
+        : catalog.screens[0];
+    current =
+      current == null
+        ? current
+        : { ...current, action: current.action == null ? current.action : { ...current.action } };
+    if (current == null) {
+      root.render(Dashboard.unavailable("This screen is no longer in the project."));
+      return;
+    }
     $withBorrowMut(
       editor,
       (editor) => {
-        editor.poster = Project.isPoster(project);
-        editor.pinnedLibrary = Drafts.recoveryLibrary(Project.storageKey(project, false));
-        if (bundle != null) {
-          const index = $position(bundle.screens, (screen) => screenId === screen.info.id) ?? 0;
-          editor.screens = bundle.screens.map((screen) => ({ ...screen.info }));
-          const value = $index(editor.screens, index);
-          editor.screen = { ...value };
-          editor.seed = bundle.screens[index]?.scene;
-          editor.pinnedLibrary = bundle.library;
-          editor.poster = bundle.poster;
-          editor.handoff = bundle.handoff;
-        } else if (project.id === Journey.PROJECT) {
-          const screen =
-            (screenId != null ? Journey.find(screenId) : undefined) ?? Journey.SCREENS[0];
-          editor.screens = Journey.SCREENS.map(Screen.info);
-          editor.screen = Screen.info(screen);
-          editor.seed = Screen.initialScene(screen);
-          editor.handoff = Journey.HANDOFF;
-        }
+        editor.poster = source.poster;
+        editor.pinnedLibrary =
+          source.library == null
+            ? source.library
+            : source.library.map((item) => ({
+                ...item,
+                layers: item.layers.map((item) => ({ ...item })),
+                assets: item.assets.slice(),
+              }));
+        editor.seed = ProjectSource.seed(source, current.id);
+        editor.screen = current;
+        editor.screenCatalog = catalog;
+        editor.handoff = source.handoff;
         const screen = editor.screen;
         editor.preview =
           screen != null && screen.action != null && Browser.workspaceQuery("preview");
@@ -211,9 +235,186 @@ async function bootstrap(root) {
       status(value._0);
     }
   } else {
-    root.render(Dashboard.unavailable(value$1._0));
+    root.render(Dashboard.unavailable(value$2._0));
     return;
   }
+}
+
+function refreshScreenCatalog() {
+  const project = $withBorrow(
+    editor,
+    (editor) => (!editor.preview && editor.screen != null ? editor.project : undefined),
+    true,
+  );
+  if (project != null) {
+    const value = Backup.source(project);
+    if (value.TAG === "Ok") {
+      applyScreenCatalog(Screens.catalog(project, ProjectSource.screenInfo(value._0)));
+      render();
+    }
+  }
+}
+
+function applyScreenCatalog(catalog) {
+  const catalog$1 = {
+    ...catalog,
+    screens: catalog.screens.map((item) => ({
+      ...item,
+      action: item.action == null ? item.action : { ...item.action },
+    })),
+  };
+  $withBorrowMut(
+    editor,
+    (editor) => {
+      if (editor.screen != null) {
+        const updated = catalog$1.screens.find((screen) => screen.id === editor.screen.id);
+        if (updated != null) {
+          editor.screen = {
+            ...updated,
+            action: updated.action == null ? updated.action : { ...updated.action },
+          };
+          editor.screenRemoved = false;
+        } else {
+          editor.screenRemoved = true;
+          editor.status = "This screen was removed. Open another screen to continue.";
+        }
+      }
+      editor.screenCatalog = catalog$1;
+    },
+    true,
+  );
+}
+
+export async function changeScreens(revision, edit) {
+  const result$1 = $withBorrowMut(
+    editor,
+    (editor) => {
+      if (editor.busy) {
+        return { TAG: "Err", _0: "Wait for the current document operation." };
+      }
+      if (editor.server) {
+        return { TAG: "Err", _0: "Open the browser project to manage its screens." };
+      }
+      if (editor.saveFailed) {
+        return { TAG: "Err", _0: "Retry or export the unsaved edits before managing screens." };
+      }
+      if (editor.recovery != null) {
+        return { TAG: "Err", _0: "Open the recovery project before managing screens." };
+      }
+      editor.busy = true;
+      return { TAG: "Ok", _0: editor.project };
+    },
+    true,
+  );
+  if (result$1.TAG === "Err") {
+    return result$1;
+  }
+  const project = result$1._0;
+  render();
+  const result = await Screens.update(project, revision, edit);
+  $withBorrowMut(
+    editor,
+    (editor) => {
+      editor.busy = false;
+    },
+    true,
+  );
+  if (result.TAG === "Ok") {
+    applyScreenCatalog({
+      ...result._0.catalog,
+      screens: result._0.catalog.screens.map((item) => ({
+        ...item,
+        action: item.action == null ? item.action : { ...item.action },
+      })),
+    });
+  } else {
+    refreshScreenCatalog();
+  }
+  render();
+  return result;
+}
+
+export function screenList() {
+  return $withBorrow(
+    editor,
+    (editor) => {
+      const map = new Map();
+      map.set("revision", { TAG: "String", _0: editor.screenCatalog.revision });
+      map.set(
+        "screens",
+        $unwrapOk(
+          $toJsonValue(editor.screenCatalog.screens, (value, json) => {
+            json.beginArray();
+            for (const item of value) {
+              json.element();
+              screenInfoSerialize_serialize(item, json);
+            }
+            json.endArray();
+          }),
+          undefined,
+          $debugJsonError,
+        ),
+      );
+      const screen = editor.screen != null && !editor.screenRemoved ? editor.screen : undefined;
+      map.set(
+        "activeScreenId",
+        $unwrapOk(
+          $toJsonValue(screen?.id, (value, json) => {
+            if (value == null) {
+              json.null();
+            } else {
+              json.string(value);
+            }
+          }),
+          undefined,
+          $debugJsonError,
+        ),
+      );
+      const result = $toJson({ TAG: "Object", _0: map }, $jsonValueWrite, false);
+      return result.TAG === "Err" ? { TAG: "Err", _0: $displayJsonError(result._0) } : result;
+    },
+    true,
+  );
+}
+
+export function screenHref(id) {
+  return $withBorrow(
+    editor,
+    (editor) => {
+      if (editor.busy || editor.saveFailed) {
+        return {
+          TAG: "Err",
+          _0: "Finish saving or export the unsaved edits before opening a screen.",
+        };
+      }
+      if (!editor.screenCatalog.screens.some((screen) => screen.id === id)) {
+        return { TAG: "Err", _0: "Screen not found." };
+      }
+      return { TAG: "Ok", _0: Journey.href(editor.project.id, id, false) };
+    },
+    true,
+  );
+}
+
+export function applyScreenEdit(edit, open) {
+  const revision = $withBorrow(editor, (editor) => editor.screenCatalog.revision, true);
+  (async () => {
+    const value = await changeScreens(revision, edit);
+    if (value.TAG === "Ok") {
+      if (open) {
+        const value$1 = screenHref(value._0.screenId);
+        if (value$1.TAG === "Ok") {
+          window.location.assign(value$1._0);
+        } else {
+          status(value$1._0);
+        }
+      } else {
+        status("Screen list saved in this browser.");
+      }
+    } else {
+      status(value._0);
+    }
+  })();
 }
 
 export function showWorkspacePanel(assets) {
@@ -571,7 +772,7 @@ async function refreshLinkedComponents() {
       }
       editor.refreshPending = false;
       let needsRefresh;
-      if (editor.recovery != null) {
+      if (editor.screenRemoved || editor.recovery != null) {
         needsRefresh = false;
       } else if (editor.history.undo.length === 0 && editor.history.redo.length === 0) {
         const scene = editor.document.scene;
@@ -651,15 +852,22 @@ async function refreshLinkedComponents() {
 }
 
 async function persistDraft() {
-  const [key, revision, document, title, library] = $withBorrow(
+  const [location, revision, document, title, library] = $withBorrow(
     editor,
     (editor) => {
+      const screen =
+        editor.screen != null && editor.screen.title !== editor.project.title
+          ? editor.screen
+          : undefined;
       const title =
-        editor.screen != null
-          ? `${editor.project.title} · ${editor.screen.title}`
-          : editor.project.title;
+        screen != null ? `${editor.project.title} · ${screen.title}` : editor.project.title;
+      const location = {
+        key: Editor.storageKey(editor),
+        projectId: editor.project.id,
+        screenId: editor.screen != null ? editor.screen.id : "main",
+      };
       return [
-        Editor.storageKey(editor),
+        location,
         editor.storageRevision,
         {
           ...editor.document,
@@ -699,7 +907,7 @@ async function persistDraft() {
   } else {
     library$1 = library;
   }
-  const value = await Drafts.commit(key, revision, document, title, library$1);
+  const value = await Drafts.commit(location, revision, document, title, library$1);
   if (value.TAG === "Ok") {
     if (value._0.TAG === "Saved") {
       const revision = value._0._0;
@@ -714,7 +922,7 @@ async function persistDraft() {
       return { TAG: "Ok" };
     }
     const project = value._0._0;
-    const message = `Another tab saved this design. Changes saved in recovery project ${project.id}.`;
+    const message = `The saved screen changed in another tab. Changes saved in recovery project ${project.id}.`;
     $withBorrowMut(
       editor,
       (editor) => {
@@ -903,6 +1111,9 @@ export async function changeDesign(command, json, author) {
     (editor) => {
       if (editor.busy) {
         return { TAG: "Err", _0: "Wait for the current document operation." };
+      }
+      if (editor.screenRemoved) {
+        return { TAG: "Err", _0: "This screen was removed. Open another screen to continue." };
       }
       if (editor.recovery != null) {
         return { TAG: "Err", _0: "Open the recovery project to continue editing." };

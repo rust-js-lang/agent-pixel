@@ -1,7 +1,10 @@
 //! IndexedDB draft revisions. The read cache is refreshed after storage notifications.
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
-use crate::{browser, projects::Project, storage};
+use crate::{browser, projects::Project, screens, storage};
 use js::{Promise, promise};
 use pixel_geometry::scene::{ComponentVariant, Document};
 use serde::{Deserialize, Serialize};
@@ -109,14 +112,52 @@ pub fn previous(
     })
 }
 
+pub fn snapshot(key: String, revision: String, document: Document) -> Result<String, String> {
+    serde_json::to_string(&Draft {
+        key,
+        revision,
+        document,
+        previous: None,
+        previous_library: None,
+        recovery: None,
+        library: None,
+    })
+    .map_err(|error| error.to_string())
+}
+
+pub struct Location {
+    pub key: String,
+    pub project_id: String,
+    pub screen_id: String,
+}
+
 pub async fn commit(
-    key: String,
+    location: Location,
     expected: Option<String>,
     document: Document,
     title: &str,
     library: Option<Vec<ComponentVariant>>,
 ) -> Result<Commit, String> {
-    let tx = storage::write_transaction(storage::DRAFTS).await?;
+    let Location {
+        key,
+        project_id,
+        screen_id,
+    } = location;
+    let tx = storage::write_screens_and_drafts().await?;
+    let catalog_request = tx.object_store(storage::SCREENS).get(project_id);
+    let active = Rc::new(Cell::new(true));
+    let catalog_has_screen = active.clone();
+    catalog_request.add_event_listener(
+        events::Success,
+        move |_: &Event| match screens::stored_catalog(catalog_request.result()) {
+            Ok(Some(catalog)) => {
+                catalog_has_screen.set(catalog.screens.iter().any(|screen| screen.id == screen_id))
+            }
+            Ok(None) => {}
+            Err(_) => tx.abort(),
+        },
+        None,
+    );
     let store = tx.object_store(storage::DRAFTS);
     let request = store.get(key.as_str());
     let written_key = key.clone();
@@ -147,12 +188,13 @@ pub async fn commit(
                     }
                 };
                 if let Some(current) = &current {
-                    if current.document == document {
+                    if active.get() && current.document == document {
                         pending.replace(Some(current.clone()));
                         return;
                     }
                 }
-                let next = if current.as_ref().map(|current| &current.revision) == expected.as_ref()
+                let next = if active.get()
+                    && current.as_ref().map(|current| &current.revision) == expected.as_ref()
                 {
                     Draft {
                         key: written_key.clone(),

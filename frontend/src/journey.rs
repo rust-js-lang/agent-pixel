@@ -72,10 +72,6 @@ pub const SCREENS: [Screen; 5] = [
     },
 ];
 
-pub fn find(id: &str) -> Option<&'static Screen> {
-    SCREENS.iter().find(|screen| screen.id == id)
-}
-
 pub fn href(project: &str, id: &str, preview: bool) -> String {
     let mode = if preview { "&preview" } else { "" };
     format!("?project={project}&screen={id}{mode}")

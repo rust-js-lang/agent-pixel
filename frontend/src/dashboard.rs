@@ -7,20 +7,17 @@ use react::{CSSProperties, JSX, jsx, use_state};
 use webapi::{FormDataEntryValue, window_global};
 
 fn project_card(project: &Project) -> JSX::Element {
-    let poster = project.is_poster();
-    let scene = project
-        .load(false)
-        .ok()
-        .flatten()
-        .and_then(|document| document.scene)
-        .filter(|scene| scene.validate().is_ok())
-        .or_else(|| {
-            crate::backup::saved(project)
-                .ok()
-                .flatten()
-                .and_then(|bundle| bundle.screens.into_iter().next())
-                .map(|screen| screen.scene)
+    let source = crate::backup::source(project).ok();
+    let poster = source
+        .as_ref()
+        .map_or_else(|| project.is_poster(), |source| source.poster);
+    let scene = source
+        .and_then(|source| {
+            let catalog = crate::screens::catalog(project, source.screen_info());
+            let screen = catalog.screens.first()?;
+            source.scene(project, &catalog, &screen.id).ok()
         })
+        .filter(|scene| scene.validate().is_ok())
         .unwrap_or_else(|| project.initial_scene());
     let count = scene.layers.len();
     let label = match count {

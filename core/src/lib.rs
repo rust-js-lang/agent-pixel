@@ -2,6 +2,7 @@
 pub mod assets;
 pub mod bundle;
 pub mod hierarchy;
+pub mod screens;
 
 pub mod scene;
 

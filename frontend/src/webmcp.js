@@ -4,13 +4,16 @@
 
 import { Project, projectSerialize_serialize } from "./projects.js";
 import * as Projects from "./projects.js";
+import { screenInfoSerialize_serialize } from "../../core/src/bundle.js";
 import { batchDeserialize_deserialize } from "../../core/src/scene.js";
+import { screenEditDeserialize_deserialize } from "../../core/src/screens.js";
 import * as Backup from "./backup.js";
 import { variantSerialize_serialize } from "./components.js";
 import * as Components from "./components.js";
 import {
   applyBatch,
   changeDesign,
+  changeScreens,
   changeVariant,
   editDesign,
   exportUnsaved,
@@ -21,6 +24,8 @@ import {
   renderDashboard,
   retrySave,
   saveStatus,
+  screenHref,
+  screenList,
   showWorkspacePanel,
 } from "./lib.js";
 import {
@@ -31,10 +36,63 @@ import {
   $jsonValueText,
   $settle,
   $toJson,
+  $toJsonValue,
   $try,
   $unwrap,
   $unwrapOk,
 } from "@rust-js/std";
+
+const SCREEN_EDIT_SCHEMA = `{
+    "type":"object","required":["revision","edit"],"additionalProperties":false,"properties":{
+        "revision":{"type":"string","description":"Current project screen revision from list_screens"},
+        "edit":{"oneOf":[
+            {"type":"object","required":["op","title"],"additionalProperties":false,"properties":{"op":{"const":"create"},"title":{"type":"string"}}},
+            {"type":"object","required":["op","id","title"],"additionalProperties":false,"properties":{"op":{"const":"rename"},"id":{"type":"string"},"title":{"type":"string"}}},
+            {"type":"object","required":["op","id","title"],"additionalProperties":false,"properties":{"op":{"const":"duplicate"},"id":{"type":"string"},"title":{"type":"string"}}},
+            {"type":"object","required":["op","id","index"],"additionalProperties":false,"properties":{"op":{"const":"reorder"},"id":{"type":"string"},"index":{"type":"integer","minimum":0,"description":"Zero-based position in the screen list"}}},
+            {"type":"object","required":["op","id"],"additionalProperties":false,"properties":{"op":{"const":"delete"},"id":{"type":"string"}}}
+        ]}
+    }
+}`;
+const SCREEN_OPEN_SCHEMA =
+  '{"type":"object","required":["id"],"additionalProperties":false,"properties":{"id":{"type":"string","description":"Stable screen ID from list_screens"}}}';
+
+function screenMutationDeserialize_deserialize(json) {
+  return json.struct(
+    "struct ScreenMutation",
+    [
+      ["revision", $json.string],
+      ["edit", screenEditDeserialize_deserialize],
+    ],
+    ([revision, edit]) => ({ revision, edit }),
+    { deny: true },
+  );
+}
+
+function openScreenDeserialize_deserialize(json) {
+  return json.struct("struct OpenScreen", [["id", $json.string]], ([id]) => ({ id }), {
+    deny: true,
+  });
+}
+
+function openScreen(input) {
+  const result = decode(input, "Provide a screen ID.", openScreenDeserialize_deserialize);
+  if (result.TAG === "Err") {
+    return result;
+  }
+  const { id } = result._0;
+  const result$1 = screenHref(id);
+  if (result$1.TAG === "Err") {
+    return result$1;
+  }
+  const href = result$1._0;
+  const map = new Map();
+  map.set("id", { TAG: "String", _0: id });
+  map.set("href", { TAG: "String", _0: href });
+  const json = $jsonValueText({ TAG: "Object", _0: map }, false);
+  location.assign(href);
+  return { TAG: "Ok", _0: json };
+}
 
 const PANEL_SCHEMA =
   '{"type":"object","required":["panel"],"additionalProperties":false,"properties":{"panel":{"enum":["file","assets"],"type":"string"}}}';
@@ -188,6 +246,63 @@ function historyTool(name, description, command) {
 
 export async function registerEditorTools() {
   return await register([
+    {
+      name: "list_screens",
+      description:
+        "List the current project's screens, stable IDs, active screen and screen list revision.",
+      inputSchema: parse(READ_SCHEMA),
+      annotations: { readOnlyHint: true },
+      execute: async () => toolResult(screenList()),
+    },
+    {
+      name: "edit_screens",
+      description:
+        "Create, name, duplicate, reorder or delete a screen at the revision from list_screens. Returns the updated list and the affected or next screen ID. Use open_screen to navigate.",
+      inputSchema: parse(SCREEN_EDIT_SCHEMA),
+      async execute(input) {
+        const value = decode(
+          input,
+          "Provide a screen list revision and edit.",
+          screenMutationDeserialize_deserialize,
+        );
+        let result;
+        if (value.TAG === "Ok") {
+          const result$1 = await changeScreens(value._0.revision, value._0.edit);
+          function map(updated) {
+            const value = new Map();
+            value.set("revision", { TAG: "String", _0: updated.catalog.revision });
+            value.set(
+              "screens",
+              $unwrapOk(
+                $toJsonValue(updated.catalog.screens, (value, json) => {
+                  json.beginArray();
+                  for (const item of value) {
+                    json.element();
+                    screenInfoSerialize_serialize(item, json);
+                  }
+                  json.endArray();
+                }),
+                undefined,
+                $debugJsonError,
+              ),
+            );
+            value.set("screenId", { TAG: "String", _0: updated.screenId });
+            return $jsonValueText({ TAG: "Object", _0: value }, false);
+          }
+          result = result$1.TAG === "Ok" ? { TAG: "Ok", _0: map(result$1._0) } : result$1;
+        } else {
+          result = { TAG: "Err", _0: value._0 };
+        }
+        return toolResult(result);
+      },
+    },
+    dashboardTool(
+      "open_screen",
+      "Open a screen by stable ID in this tab. Discover the editor's tools again after navigation.",
+      SCREEN_OPEN_SCHEMA,
+      false,
+      openScreen,
+    ),
     {
       name: "show_workspace_panel",
       description:

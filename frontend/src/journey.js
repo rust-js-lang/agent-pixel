@@ -68,10 +68,6 @@ export const SCREENS = [
   },
 ];
 
-export function find(id) {
-  return SCREENS.find((screen) => screen.id === id);
-}
-
 export function href(project, id, preview) {
   const mode = preview ? "&preview" : "";
   return `?project=${project}&screen=${id}${mode}`;

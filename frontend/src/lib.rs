@@ -14,6 +14,7 @@ mod components;
 mod dashboard;
 mod journey;
 mod projects;
+mod screens;
 mod transport;
 mod view;
 mod webmcp;
@@ -25,7 +26,12 @@ use js::JsError;
 use pixel_geometry::scene::{
     Author, Batch, ComponentInsert, ComponentSwitch, Design, Document, Edit, History, Patch, Scene,
 };
-use pixel_geometry::{assets::ImagePlacement, bundle::ScreenInfo, scene::ComponentVariant};
+use pixel_geometry::{
+    assets::ImagePlacement,
+    bundle::ScreenInfo,
+    scene::ComponentVariant,
+    screens::{ScreenCatalog, ScreenEdit},
+};
 use projects::Project;
 use react::dom::client::{Root, create_root};
 use std::cell::{Cell, RefCell};
@@ -49,7 +55,8 @@ struct Editor {
     server: bool,
     project: Project,
     screen: Option<ScreenInfo>,
-    screens: Vec<ScreenInfo>,
+    screen_catalog: ScreenCatalog,
+    screen_removed: bool,
     seed: Option<Scene>,
     pinned_library: Option<Vec<ComponentVariant>>,
     poster: bool,
@@ -74,13 +81,14 @@ impl Editor {
     }
 
     fn storage_key(&self) -> String {
-        let screen = self.screen.as_ref().filter(|screen| {
-            self.screens
-                .first()
-                .is_some_and(|first| first.id != screen.id)
-        });
-        self.project
-            .screen_key(self.server, screen.map(|screen| screen.id.as_str()))
+        match &self.screen {
+            Some(screen) => self.project.screen_key(
+                self.server,
+                &self.screen_catalog.legacy_base_id,
+                &screen.id,
+            ),
+            None => self.project.storage_key(self.server),
+        }
     }
 
     fn initial_scene(&self) -> Scene {
@@ -102,10 +110,23 @@ pub fn mount() {
 
 async fn bootstrap(root: &'static Root) {
     let warning = drafts::reload_cache().await.err();
+    let warning = screens::reload_cache().await.err().or(warning);
     window().add_event_listener(
         events::Storage,
         |event: &StorageEvent| {
             let key = event.key();
+            if key.as_deref() == Some(screens::CHANGED) {
+                js::spawn(Box::new(async {
+                    if screens::reload_cache().await.is_ok() {
+                        let _ = drafts::reload_cache().await;
+                        if projects::route().is_none() {
+                            render_dashboard();
+                        } else {
+                            refresh_screen_catalog();
+                        }
+                    }
+                }));
+            }
             if key.as_deref() == Some(projects::CHANGED) {
                 js::spawn(Box::new(async {
                     projects::reload_cache().await;
@@ -148,47 +169,36 @@ async fn bootstrap(root: &'static Root) {
         });
         return;
     };
-    let bundle = match backup::saved(&project) {
-        Ok(bundle) => bundle,
+    let source = match backup::source(&project) {
+        Ok(source) => source,
         Err(error) => {
             root.render(dashboard::unavailable(&error));
             return;
         }
     };
-    let screen_id = browser::query_value("screen");
+    let catalog = screens::catalog(&project, source.screen_info());
+    let requested = if server {
+        Some(catalog.legacy_base_id.clone())
+    } else {
+        browser::query_value("screen")
+    };
+    let current = match requested.as_deref() {
+        Some(id) => catalog.screens.iter().find(|info| info.id == id),
+        None => catalog.screens.first(),
+    };
+    let Some(current) = current.cloned() else {
+        root.render(dashboard::unavailable(
+            "This screen is no longer in the project.",
+        ));
+        return;
+    };
     EDITOR.with_borrow_mut(|editor| {
-        editor.poster = project.is_poster();
-        editor.pinned_library = drafts::recovery_library(&project.storage_key(false));
-        if let Some(bundle) = bundle {
-            let index = bundle
-                .screens
-                .iter()
-                .position(|screen| screen_id.as_deref() == Some(screen.info.id.as_str()))
-                .unwrap_or(0);
-            editor.screens = bundle
-                .screens
-                .iter()
-                .map(|screen| screen.info.clone())
-                .collect();
-            editor.screen = Some(editor.screens[index].clone());
-            editor.seed = bundle
-                .screens
-                .into_iter()
-                .nth(index)
-                .map(|screen| screen.scene);
-            editor.pinned_library = Some(bundle.library);
-            editor.poster = bundle.poster;
-            editor.handoff = bundle.handoff;
-        } else if project.id == journey::PROJECT {
-            let screen = screen_id
-                .as_deref()
-                .and_then(journey::find)
-                .unwrap_or(&journey::SCREENS[0]);
-            editor.screens = journey::SCREENS.iter().map(journey::Screen::info).collect();
-            editor.screen = Some(screen.info());
-            editor.seed = Some(screen.initial_scene());
-            editor.handoff = Some(journey::HANDOFF.into());
-        }
+        editor.poster = source.poster;
+        editor.pinned_library = source.library.clone();
+        editor.seed = Some(source.seed(&current.id));
+        editor.screen = Some(current);
+        editor.screen_catalog = catalog;
+        editor.handoff = source.handoff;
         editor.preview = editor
             .screen
             .as_ref()
@@ -205,6 +215,108 @@ async fn bootstrap(root: &'static Root) {
     if let Err(error) = start(warning).await {
         status(error);
     }
+}
+
+fn refresh_screen_catalog() {
+    let project = EDITOR.with_borrow(|editor| {
+        (!editor.preview && editor.screen.is_some()).then(|| editor.project.clone())
+    });
+    if let Some(project) = project {
+        if let Ok(source) = backup::source(&project) {
+            apply_screen_catalog(screens::catalog(&project, source.screen_info()));
+            render();
+        }
+    }
+}
+
+fn apply_screen_catalog(catalog: ScreenCatalog) {
+    EDITOR.with_borrow_mut(|editor| {
+        if let Some(current) = &editor.screen {
+            if let Some(updated) = catalog
+                .screens
+                .iter()
+                .find(|screen| screen.id == current.id)
+            {
+                editor.screen = Some(updated.clone());
+                editor.screen_removed = false;
+            } else {
+                editor.screen_removed = true;
+                editor.status = "This screen was removed. Open another screen to continue.".into();
+            }
+        }
+        editor.screen_catalog = catalog;
+    });
+}
+
+async fn change_screens(revision: &str, edit: ScreenEdit) -> Result<screens::ScreenUpdate, String> {
+    let project = EDITOR.with_borrow_mut(|editor| {
+        if editor.busy {
+            return Err("Wait for the current document operation.");
+        }
+        if editor.server {
+            return Err("Open the browser project to manage its screens.");
+        }
+        if editor.save_failed {
+            return Err("Retry or export the unsaved edits before managing screens.");
+        }
+        if editor.recovery.is_some() {
+            return Err("Open the recovery project before managing screens.");
+        }
+        editor.busy = true;
+        Ok(editor.project.clone())
+    })?;
+    render();
+    let result = screens::update(&project, revision, edit).await;
+    EDITOR.with_borrow_mut(|editor| editor.busy = false);
+    match &result {
+        Ok(updated) => apply_screen_catalog(updated.catalog.clone()),
+        Err(_) => refresh_screen_catalog(),
+    }
+    render();
+    result
+}
+
+fn screen_list() -> Result<String, String> {
+    EDITOR.with_borrow(|editor| {
+        serde_json::to_string(&serde_json::json!({
+            "revision": editor.screen_catalog.revision,
+            "screens": editor.screen_catalog.screens,
+            "activeScreenId": editor.screen.as_ref().filter(|_| !editor.screen_removed).map(|screen| &screen.id)
+        })).map_err(|error| error.to_string())
+    })
+}
+
+fn screen_href(id: &str) -> Result<String, String> {
+    EDITOR.with_borrow(|editor| {
+        if editor.busy || editor.save_failed {
+            return Err(
+                "Finish saving or export the unsaved edits before opening a screen.".into(),
+            );
+        }
+        if !editor
+            .screen_catalog
+            .screens
+            .iter()
+            .any(|screen| screen.id == id)
+        {
+            return Err("Screen not found.".into());
+        }
+        Ok(journey::href(&editor.project.id, id, false))
+    })
+}
+
+fn apply_screen_edit(edit: ScreenEdit, open: bool) {
+    let revision = EDITOR.with_borrow(|editor| editor.screen_catalog.revision.clone());
+    js::spawn(Box::new(async move {
+        match change_screens(&revision, edit).await {
+            Ok(updated) if open => match screen_href(&updated.screen_id) {
+                Ok(href) => window().location().assign(&href),
+                Err(error) => status(error),
+            },
+            Ok(_) => status("Screen list saved in this browser.".into()),
+            Err(error) => status(error),
+        }
+    }));
 }
 
 fn show_workspace_panel(assets: bool) {
@@ -446,7 +558,8 @@ async fn refresh_linked_components() {
             return false;
         }
         editor.refresh_pending = false;
-        let needs_refresh = editor.recovery.is_none()
+        let needs_refresh = !editor.screen_removed
+            && editor.recovery.is_none()
             && (!editor.history.undo.is_empty()
                 || !editor.history.redo.is_empty()
                 || editor
@@ -491,13 +604,25 @@ async fn refresh_linked_components() {
 }
 
 async fn persist_draft() -> Result<(), String> {
-    let (key, revision, document, title, library) = EDITOR.with_borrow(|editor| {
-        let title = editor.screen.as_ref().map_or_else(
-            || editor.project.title.clone(),
-            |screen| format!("{} · {}", editor.project.title, screen.title),
-        );
+    let (location, revision, document, title, library) = EDITOR.with_borrow(|editor| {
+        let title = editor
+            .screen
+            .as_ref()
+            .filter(|screen| screen.title != editor.project.title)
+            .map_or_else(
+                || editor.project.title.clone(),
+                |screen| format!("{} · {}", editor.project.title, screen.title),
+            );
+        let location = drafts::Location {
+            key: editor.storage_key(),
+            project_id: editor.project.id.clone(),
+            screen_id: editor
+                .screen
+                .as_ref()
+                .map_or_else(|| "main".to_owned(), |screen| screen.id.clone()),
+        };
         (
-            editor.storage_key(),
+            location,
             editor.storage_revision.clone(),
             editor.document.clone(),
             title,
@@ -514,7 +639,7 @@ async fn persist_draft() -> Result<(), String> {
     } else {
         library
     };
-    match drafts::commit(key, revision, document, &title, library).await {
+    match drafts::commit(location, revision, document, &title, library).await {
         Ok(drafts::Commit::Saved(revision)) => {
             EDITOR.with_borrow_mut(|editor| {
                 editor.storage_revision = Some(revision);
@@ -524,7 +649,7 @@ async fn persist_draft() -> Result<(), String> {
         }
         Ok(drafts::Commit::Recovery(project)) => {
             let message = format!(
-                "Another tab saved this design. Changes saved in recovery project {}.",
+                "The saved screen changed in another tab. Changes saved in recovery project {}.",
                 project.id
             );
             EDITOR.with_borrow_mut(|editor| editor.recovery = Some(project));
@@ -628,6 +753,9 @@ async fn change_design(command: &str, json: &str, author: Author) -> Result<Stri
     EDITOR.with_borrow_mut(|editor| {
         if editor.busy {
             return Err("Wait for the current document operation.");
+        }
+        if editor.screen_removed {
+            return Err("This screen was removed. Open another screen to continue.");
         }
         if editor.recovery.is_some() {
             return Err("Open the recovery project to continue editing.");

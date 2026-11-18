@@ -22,6 +22,4 @@ export const Screen: {
 
 export const SCREENS: Screen[];
 
-export function find(id: string): Screen | null | undefined;
-
 export function href(project: string, id: string, preview: boolean): string;

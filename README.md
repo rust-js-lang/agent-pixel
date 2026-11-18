@@ -94,6 +94,12 @@ The dashboard, editor, canvas, shared artboard, journey prototype, and page shel
 
 Open **Project backup** on the dashboard to download a versioned JSON bundle or restore one as a new project. On the dashboard, agents can call `export_project` with `{ id }` and `import_project` with `{ bundle }`. Each bundle contains the saved browser artboards, prototype links, and a snapshot of the component library. Restored instances resolve against that snapshot so they keep their appearance in a fresh browser.
 
+## Project screens
+
+Open **File** and expand **Manage screens** to add, rename, duplicate, reorder, or remove screens. Each screen has a stable URL and its own saved artboard. The bare project URL opens the first screen in the list. A duplicate includes the source's saved artboard and assets. Projects can add up to 64 screens.
+
+Agents call `list_screens` for IDs and the screen-list revision, then `edit_screens` with that revision and an edit. The operations are `create`, `rename`, `duplicate`, `reorder`, and `delete`. Reorder uses a zero-based position. Use `open_screen` with an ID to navigate and discover the editor's tools there. Undo and redo operate on the active artboard's design edits. Screen-list changes have their own revision.
+
 ## Artboard dimensions
 
 Open **Artboard size** in the inspector to set the width and height in artboard pixels. Each dimension can be 64–8192 px. Layers keep their coordinates when the artboard changes size. Move or resize any layers outside the proposed bounds before shrinking.

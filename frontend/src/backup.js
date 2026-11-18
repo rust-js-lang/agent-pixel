@@ -17,27 +17,16 @@ import * as Bundle from "../../core/src/bundle.js";
 import { Scene } from "../../core/src/scene.js";
 import * as Drafts from "./drafts.js";
 import { exportUnsaved as exportUnsaved$1 } from "./lib.js";
-import { $byteLen, $displayJsonError, $fromJson, $iter, $next, $toJson } from "@rust-js/std";
-
-export const ProjectBundle = {
-  parse(json) {
-    if ($byteLen(json) > MAX_BYTES) {
-      return { TAG: "Err", _0: "Project bundle exceeds 2 MB." };
-    }
-    const result = $fromJson(json, projectBundleDeserialize_deserialize);
-    const result$1 =
-      result.TAG === "Err" ? { TAG: "Err", _0: "Invalid project bundle JSON." } : result;
-    if (result$1.TAG === "Err") {
-      return result$1;
-    }
-    const bundle = result$1._0;
-    const result$2 = ProjectBundle$1.validate(bundle);
-    if (result$2.TAG === "Err") {
-      return result$2;
-    }
-    return { TAG: "Ok", _0: bundle };
-  },
-};
+import * as Screens from "./screens.js";
+import {
+  $byteLen,
+  $displayJsonError,
+  $fromJson,
+  $iter,
+  $next,
+  $toJson,
+  $unwrap,
+} from "@rust-js/std";
 
 export function saved(project) {
   const raw = Projects.savedBundle(project.id);
@@ -80,79 +69,162 @@ export function downloadUnsaved() {
   return { TAG: "Ok" };
 }
 
-function capture(project, replacement, library) {
-  const result = saved(project);
-  if (result.TAG === "Err") {
-    return result;
-  }
-  let bundle = result._0;
-  if (bundle == null) {
-    const screens =
-      project.id === Journey.PROJECT
-        ? Journey.SCREENS.map((screen) => ({
-            info: Screen.info(screen),
-            scene: Screen.initialScene(screen),
-          }))
-        : [
-            {
-              info: {
-                id: "main",
-                title: project.title,
-              },
-              scene: Project.initialScene(project),
-            },
-          ];
-    const isPoster = Project.isPoster(project);
-    const then = project.id === Journey.PROJECT ? Journey.HANDOFF : undefined;
-    const library$1 = Drafts.recoveryLibrary(Project.storageKey(project, false));
-    let tmp;
-    if (library$1 != null) {
-      tmp = library$1;
-    } else if (library != null) {
-      tmp = [];
-    } else {
-      const result = Components.liveLibrary();
-      if (result.TAG === "Err") {
-        return result;
-      }
-      tmp = result._0;
-    }
-    bundle = {
-      version: VERSION,
-      title: project.title,
-      poster: isPoster,
-      handoff: then ?? undefined,
-      screens,
-      library: tmp,
-    };
-  }
-  if (library != null) {
-    bundle.library = library;
-  }
-  for (const [index, screen] of bundle.screens.entries()) {
-    if (replacement != null && replacement[0] === screen.info.id) {
-      if (replacement != null) {
-        const old = replacement;
-        replacement = undefined;
-        const scene = old[1];
-        screen.scene = scene;
-      }
-      continue;
-    }
-    const key = Project.screenKey(project, false, index > 0 ? screen.info.id : undefined);
+export const ProjectSource = {
+  screenInfo(projectSource) {
+    return projectSource.screens.map((screen) => ({
+      ...screen.info,
+      action: screen.info.action == null ? screen.info.action : { ...screen.info.action },
+    }));
+  },
+
+  seed(projectSource, id) {
+    const find = projectSource.screens.find((screen) => screen.info.id === id);
+    return find != null
+      ? {
+          ...find.scene,
+          layers: find.scene.layers.map((item) => ({ ...item })),
+          instances: find.scene.instances.map((item) => ({
+            ...item,
+            layerIds: item.layerIds.slice(),
+          })),
+          assets: find.scene.assets.slice(),
+          groups: find.scene.groups.map((item) => ({ ...item, children: item.children.slice() })),
+        }
+      : Scene.blank();
+  },
+
+  scene(projectSource, project, catalog, id) {
+    const key = Project.screenKey(project, false, catalog.legacyBaseId, id);
     const result = Projects.loadDocument(key);
     if (result.TAG === "Err") {
       return result;
     }
-    const scene = result._0?.scene;
-    if (scene != null) {
-      screen.scene = scene;
+    return { TAG: "Ok", _0: result._0?.scene ?? ProjectSource.seed(projectSource, id) };
+  },
+};
+
+export const ProjectBundle = {
+  parse(json) {
+    if ($byteLen(json) > MAX_BYTES) {
+      return { TAG: "Err", _0: "Project bundle exceeds 2 MB." };
+    }
+    const result = $fromJson(json, projectBundleDeserialize_deserialize);
+    const result$1 =
+      result.TAG === "Err" ? { TAG: "Err", _0: "Invalid project bundle JSON." } : result;
+    if (result$1.TAG === "Err") {
+      return result$1;
+    }
+    const bundle = result$1._0;
+    const result$2 = ProjectBundle$1.validate(bundle);
+    if (result$2.TAG === "Err") {
+      return result$2;
+    }
+    return { TAG: "Ok", _0: bundle };
+  },
+};
+
+export function source(project) {
+  const result = saved(project);
+  if (result.TAG === "Err") {
+    return result;
+  }
+  const bundle = result._0;
+  if (bundle != null) {
+    return {
+      TAG: "Ok",
+      _0: {
+        screens: bundle.screens,
+        poster: bundle.poster,
+        handoff: bundle.handoff,
+        library: bundle.library,
+      },
+    };
+  }
+  const screens =
+    project.id === Journey.PROJECT
+      ? Journey.SCREENS.map((screen) => ({
+          info: Screen.info(screen),
+          scene: Screen.initialScene(screen),
+        }))
+      : [
+          {
+            info: {
+              id: "main",
+              title: project.title,
+            },
+            scene: Project.initialScene(project),
+          },
+        ];
+  return {
+    TAG: "Ok",
+    _0: {
+      screens,
+      poster: Project.isPoster(project),
+      handoff: (project.id === Journey.PROJECT ? Journey.HANDOFF : undefined) ?? undefined,
+      library: Drafts.recoveryLibrary(Project.storageKey(project, false)) ?? undefined,
+    },
+  };
+}
+
+function capture(project, replacement, library) {
+  const result = source(project);
+  if (result.TAG === "Err") {
+    return result;
+  }
+  const source$1 = result._0;
+  const catalog = Screens.catalog(project, ProjectSource.screenInfo(source$1));
+  const screens = [];
+  const iter = catalog.screens.values();
+  let tmp;
+  let tmp$1;
+  while (true) {
+    const info = iter.next().value;
+    if (info != null) {
+      let scene;
+      if (replacement != null && replacement[0] === info.id) {
+        const old = replacement;
+        replacement = undefined;
+        scene = $unwrap(old, "Replacement scene")[1];
+      } else {
+        const result = ProjectSource.scene(source$1, project, catalog, info.id);
+        if (result.TAG === "Err") {
+          return result;
+        }
+        scene = result._0;
+      }
+      screens.push({
+        info: { ...info, action: info.action == null ? info.action : { ...info.action } },
+        scene,
+      });
+    } else {
+      if (replacement != null) {
+        return { TAG: "Err", _0: "Screen not found in this project." };
+      }
+      tmp = screens;
+      const library$1 = library ?? source$1.library;
+      if (library$1 != null) {
+        tmp$1 = library$1;
+      } else {
+        const result = Components.liveLibrary();
+        if (result.TAG === "Err") {
+          return result;
+        }
+        tmp$1 = result._0;
+      }
+      break;
     }
   }
-  if (replacement != null) {
-    return { TAG: "Err", _0: "Screen not found in this project." };
-  }
-  return { TAG: "Ok", _0: bundle };
+  return {
+    TAG: "Ok",
+    _0: {
+      version: VERSION,
+      title: project.title,
+      poster: source$1.poster,
+      handoff: source$1.handoff,
+      screens: tmp,
+      library: tmp$1,
+    },
+  };
 }
 
 export function exportUnsaved(project, screenId, scene, library) {

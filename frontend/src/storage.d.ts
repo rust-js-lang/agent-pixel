@@ -4,6 +4,8 @@ export const DRAFTS: string;
 
 export const PROJECTS: string;
 
+export const SCREENS: string;
+
 export function readRecords(store: string): Promise<{
     TAG: "Ok";
     _0: string[];
@@ -12,7 +14,15 @@ export function readRecords(store: string): Promise<{
     _0: string;
 }>;
 
-export function writeTransaction(store: string): Promise<{
+export function writeTransaction(store: unknown): Promise<{
+    TAG: "Ok";
+    _0: IDBTransaction;
+} | {
+    TAG: "Err";
+    _0: string;
+}>;
+
+export function writeScreensAndDrafts(): Promise<{
     TAG: "Ok";
     _0: IDBTransaction;
 } | {

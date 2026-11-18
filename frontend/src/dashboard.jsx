@@ -8,23 +8,30 @@ import * as View from "./view.jsx";
 import { useState } from "react";
 import * as Bundle from "../../core/src/bundle.js";
 import { Scene } from "../../core/src/scene.js";
+import { ProjectSource } from "./backup.js";
 import * as Backup from "./backup.js";
 import { message as message$1 } from "./lib.js";
+import * as Screens from "./screens.js";
 import { $displayF64, $settle } from "@rust-js/std";
 
 function projectCard(project) {
-  const poster = Project.isPoster(project);
-  const result = Project.load(project, false);
-  const scene$1 = (result.TAG === "Ok" ? result._0 : undefined)?.scene;
-  function fallback() {
-    const result = Backup.saved(project);
-    const bundle = result.TAG === "Ok" ? result._0 : undefined;
-    const screen = bundle != null ? bundle.screens[0] : undefined;
-    return screen?.scene;
+  const result = Backup.source(project);
+  const source = result.TAG === "Ok" ? result._0 : undefined;
+  const poster = source != null ? source.poster : Project.isPoster(project);
+  function then(source) {
+    const catalog = Screens.catalog(project, ProjectSource.screenInfo(source));
+    const screen = catalog.screens[0];
+    if (screen == null) {
+      return;
+    }
+    const result = ProjectSource.scene(source, project, catalog, screen.id);
+    return result.TAG === "Ok" ? result._0 : undefined;
   }
+  const scene$1 = source != null ? then(source) : undefined;
   const scene =
-    (scene$1 != null && Scene.validate(scene$1).TAG === "Ok" ? scene$1 : fallback()) ??
-    Project.initialScene(project);
+    scene$1 != null && Scene.validate(scene$1).TAG === "Ok"
+      ? scene$1
+      : Project.initialScene(project);
   const count = scene.layers.length;
   let label;
   switch (count) {

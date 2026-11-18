@@ -4,12 +4,13 @@ use std::cell::Cell;
 use js::{Promise, promise};
 use webapi::{
     Event, EventTargetExt, IDBDatabase, IDBTransaction, IDBTransactionOptions,
-    IDBVersionChangeEvent, events, global,
+    IDBVersionChangeEvent, IntoStrOrList, events, global,
 };
 
 const DATABASE: &str = "agent-pixel";
 pub const DRAFTS: &str = "drafts";
 pub const PROJECTS: &str = "projects";
+pub const SCREENS: &str = "screens";
 
 thread_local! {
     static DB: Cell<Option<&'static IDBDatabase>> = const { Cell::new(None) };
@@ -20,7 +21,7 @@ async fn database() -> Result<&'static IDBDatabase, String> {
         return Ok(db);
     }
     let request = global::indexed_db()
-        .open(DATABASE, Some(2.0))
+        .open(DATABASE, Some(3.0))
         .map_err(crate::message)?;
     let ready: Promise<Result<&IDBDatabase, String>> = promise::new(|resolve, _| {
         request.add_event_listener(
@@ -28,7 +29,7 @@ async fn database() -> Result<&'static IDBDatabase, String> {
             move |_: &IDBVersionChangeEvent| {
                 if let Some(db) = request.result().and_then(js::downcast::<IDBDatabase>) {
                     let names = db.object_store_names();
-                    for store in [DRAFTS, PROJECTS] {
+                    for store in [DRAFTS, PROJECTS, SCREENS] {
                         if !names.contains(store) {
                             db.create_object_store(store, None);
                         }
@@ -108,7 +109,9 @@ pub async fn read_records(store: &str) -> Result<Vec<String>, String> {
     result.await
 }
 
-pub async fn write_transaction(store: &str) -> Result<&'static IDBTransaction, String> {
+pub async fn write_transaction(
+    store: impl IntoStrOrList,
+) -> Result<&'static IDBTransaction, String> {
     Ok(database().await?.transaction(
         store,
         Some("readwrite"),
@@ -116,6 +119,11 @@ pub async fn write_transaction(store: &str) -> Result<&'static IDBTransaction, S
             durability: Some("strict"),
         }),
     ))
+}
+
+pub async fn write_screens_and_drafts() -> Result<&'static IDBTransaction, String> {
+    let stores = [SCREENS.to_owned(), DRAFTS.to_owned()];
+    write_transaction(stores.as_slice()).await
 }
 
 pub fn committed(tx: &'static IDBTransaction, error: &'static str) -> Promise<Result<(), String>> {

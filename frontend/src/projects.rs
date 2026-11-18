@@ -55,11 +55,12 @@ impl Project {
         format!("agent-pixel:bundle:{}", self.id)
     }
 
-    pub fn screen_key(&self, server: bool, screen: Option<&str>) -> String {
+    pub fn screen_key(&self, server: bool, legacy_base_id: &str, screen_id: &str) -> String {
         let base = self.storage_key(server);
-        match screen {
-            Some(id) => format!("{base}:{id}"),
-            None => base,
+        if screen_id == legacy_base_id {
+            base
+        } else {
+            format!("{base}:{screen_id}")
         }
     }
 

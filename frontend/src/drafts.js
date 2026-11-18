@@ -4,6 +4,7 @@
 
 import * as Browser from "./browser.js";
 import { Project, projectDeserialize_deserialize, projectSerialize_serialize } from "./projects.js";
+import * as Screens from "./screens.js";
 import * as Storage from "./storage.js";
 import {
   componentVariantDeserialize_deserialize,
@@ -273,12 +274,38 @@ export function previous(key, expected) {
   );
 }
 
-export async function commit(key, expected, document, title, library) {
-  const result$1 = await Storage.writeTransaction(Storage.DRAFTS);
+export function snapshot(key, revision, document) {
+  const result = $toJson(
+    {
+      key,
+      revision,
+      document,
+    },
+    draftSerialize_serialize,
+    false,
+  );
+  return result.TAG === "Err" ? { TAG: "Err", _0: $displayJsonError(result._0) } : result;
+}
+
+export async function commit(location, expected, document, title, library) {
+  const { key, projectId, screenId } = location;
+  const result$1 = await Storage.writeScreensAndDrafts();
   if (result$1.TAG === "Err") {
     return result$1;
   }
   const tx = result$1._0;
+  const catalogRequest = tx.objectStore(Storage.SCREENS).get(projectId);
+  let active = true;
+  catalogRequest.addEventListener("success", () => {
+    const value = Screens.storedCatalog(catalogRequest.result);
+    if (value.TAG === "Ok") {
+      if (value._0 != null) {
+        active = value._0.screens.some((screen) => screen.id === screenId);
+      }
+    } else {
+      tx.abort();
+    }
+  });
   const store = tx.objectStore(Storage.DRAFTS);
   const request = store.get(key);
   const writtenKey = key;
@@ -312,7 +339,7 @@ export async function commit(key, expected, document, title, library) {
         }
       }
       if (current !== undefined) {
-        if ($eq(current.document, document)) {
+        if (active && $eq(current.document, document)) {
           $cellReplace($borrowMut(pending), {
             ...current,
             document: {
@@ -376,9 +403,8 @@ export async function commit(key, expected, document, title, library) {
           return;
         }
       }
-      const value = current?.revision;
       let next;
-      if (value == expected) {
+      if (active && current?.revision == expected) {
         const props = { ...document };
         const scene =
           document.scene == null
@@ -478,12 +504,12 @@ export async function commit(key, expected, document, title, library) {
                 })),
         };
       }
-      const value$1 = $toJson(next, draftSerialize_serialize, false);
-      if (value$1.TAG !== "Ok") {
+      const value = $toJson(next, draftSerialize_serialize, false);
+      if (value.TAG !== "Ok") {
         tx.abort();
         return;
       }
-      store.put(value$1._0, next.key);
+      store.put(value._0, next.key);
       $cellReplace($borrowMut(pending), next);
     });
     tx.addEventListener("complete", () => {

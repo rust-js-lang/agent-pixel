@@ -5,6 +5,7 @@ import {
   Editor,
   addImage,
   applyEdit,
+  applyScreenEdit,
   changeVariant,
   deleteSelection,
   edit,
@@ -44,6 +45,7 @@ import {
   $displayF64,
   $f64ToInt,
   $parseInt,
+  $position,
   $round,
   $toFixed,
   $trim,
@@ -675,15 +677,24 @@ function componentPicker(disabled, board) {
 }
 
 function journeyNavigation(editor, current, preview) {
-  const screens = editor.screens.map((screen) => (
+  const screens = editor.screenCatalog.screens.map((screen) => (
     <a
       key={screen.id}
       href={Journey.href(editor.project.id, screen.id, preview)}
       aria-current={screen.id === current.id ? "step" : "false"}
+      aria-disabled={editor.saveFailed || editor.busy}
+      onClick={(event) => {
+        if ($withBorrow(editor$1, (editor) => editor.saveFailed || editor.busy, true)) {
+          event.preventDefault();
+        }
+      }}
     >
       {screen.title}
     </a>
   ));
+  const title = editor.screenCatalog.screens.some((screen) => screen.action != null)
+    ? "Journey screens"
+    : "Screens";
   const name = preview ? "Edit screen" : "Play prototype";
   const value = preview
     ? JOURNEY["journey-navigation"]
@@ -697,8 +708,8 @@ function journeyNavigation(editor, current, preview) {
     href = Journey.href(editor.project.id, current.id, !preview);
   }
   return (
-    <nav className={value} aria-label="Journey screens">
-      <h3>Journey screens</h3>
+    <nav className={value} aria-label={title}>
+      <h3>{title}</h3>
       <div className={className}>{screens}</div>
       <div className={className$1}>
         {current.action != null && (
@@ -709,6 +720,115 @@ function journeyNavigation(editor, current, preview) {
         {editor.handoff != null && <a href={editor.handoff}>Developer handoff ↗</a>}
       </div>
     </nav>
+  );
+}
+
+function screenManager(editor) {
+  const disabled = editor.busy || editor.saveFailed || editor.recovery != null;
+  const current = editor.screen != null && !editor.screenRemoved ? editor.screen : undefined;
+  function map(screen) {
+    const index = $unwrap(
+      $position(editor.screenCatalog.screens, (item) => item.id === screen.id),
+      "Active screen",
+    );
+    const count = editor.screenCatalog.screens.length;
+    const renameId = screen.id;
+    const copyId = screen.id;
+    const copyTitle = Array.from(`${screen.title} copy`[Symbol.iterator]().take(80)).join("");
+    const up = screen.id;
+    const down = screen.id;
+    const remove = screen.id;
+    const removeLabel = `Remove "${screen.title}" from this project?`;
+    return (
+      <>
+        <form
+          key={`${screen.id}-${screen.title}`}
+          aria-label="Rename screen"
+          action={(data) => {
+            const title = data.get("title");
+            if (typeof title === "string") {
+              applyScreenEdit({ TAG: "Rename", id: renameId, title }, false);
+            }
+          }}
+        >
+          <label>
+            Screen name
+            <input
+              name="title"
+              defaultValue={screen.title}
+              required
+              maxLength={80}
+              disabled={disabled}
+            />
+          </label>
+          <button type="submit" disabled={disabled}>
+            Rename screen
+          </button>
+        </form>
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => applyScreenEdit({ TAG: "Duplicate", id: copyId, title: copyTitle }, true)}
+        >
+          Duplicate screen
+        </button>
+        <div className={EDITOR_STYLES["component-position"]}>
+          <button
+            type="button"
+            disabled={disabled || index === 0}
+            onClick={() =>
+              applyScreenEdit({ TAG: "Reorder", id: up, index: Math.max(index - 1, 0) }, false)
+            }
+          >
+            Move up
+          </button>
+          <button
+            type="button"
+            disabled={disabled || (index + 1) >>> 0 >= count}
+            onClick={() =>
+              applyScreenEdit({ TAG: "Reorder", id: down, index: (index + 1) >>> 0 }, false)
+            }
+          >
+            Move down
+          </button>
+        </div>
+        <button
+          type="button"
+          disabled={disabled || count <= 1}
+          onClick={() => {
+            if (window.confirm(removeLabel)) {
+              applyScreenEdit({ TAG: "Delete", id: remove }, true);
+            }
+          }}
+        >
+          Remove screen
+        </button>
+      </>
+    );
+  }
+  const management = current != null ? map(current) : undefined;
+  return (
+    <details className={EDITOR_STYLES["component-library"]}>
+      <summary>Manage screens</summary>
+      <form
+        aria-label="Add screen"
+        action={(data) => {
+          const title = data.get("title");
+          if (typeof title === "string") {
+            applyScreenEdit({ TAG: "Create", title }, true);
+          }
+        }}
+      >
+        <label>
+          New screen name
+          <input name="title" required maxLength={80} disabled={disabled} />
+        </label>
+        <button type="submit" disabled={disabled}>
+          Add screen
+        </button>
+      </form>
+      {management}
+    </details>
   );
 }
 
@@ -795,7 +915,7 @@ export function editor(editor) {
       board,
     ),
   );
-  const disabled = editor.busy || editor.recovery != null || scene == null;
+  const disabled = editor.busy || editor.recovery != null || editor.screenRemoved || scene == null;
   const selectedLayer = layers.find((layer) => layer.id === selected);
   const group = scene != null ? scene.groups.find((group) => group.id === selected) : undefined;
   const instance =
@@ -869,9 +989,8 @@ export function editor(editor) {
   ) : (
     <>
       <h2>{documentTitle}</h2>
-      {screen != null &&
-        (screen.action != null || editor.screens.length > 1) &&
-        journeyNavigation(editor, screen, false)}
+      {screen != null && journeyNavigation(editor, screen, false)}
+      {!editor.server && screenManager(editor)}
       <h3>Layers</h3>
       {layerPanel(scene, selected, disabled)}
     </>

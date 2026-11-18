@@ -5,6 +5,7 @@ use crate::{
 use pixel_geometry::{
     bundle::{BundleScreen, ProjectBundle, ScreenInfo, VERSION},
     scene::{ComponentVariant, Document, Scene},
+    screens::ScreenCatalog,
 };
 
 pub fn saved(project: &Project) -> Result<Option<ProjectBundle>, String> {
@@ -31,69 +32,111 @@ pub fn download_unsaved() -> Result<(), String> {
     Ok(())
 }
 
+pub struct ProjectSource {
+    screens: Vec<BundleScreen>,
+    pub poster: bool,
+    pub handoff: Option<String>,
+    pub library: Option<Vec<ComponentVariant>>,
+}
+
+impl ProjectSource {
+    pub fn screen_info(&self) -> Vec<ScreenInfo> {
+        self.screens
+            .iter()
+            .map(|screen| screen.info.clone())
+            .collect()
+    }
+
+    pub fn seed(&self, id: &str) -> Scene {
+        self.screens
+            .iter()
+            .find(|screen| screen.info.id == id)
+            .map(|screen| screen.scene.clone())
+            .unwrap_or_else(Scene::blank)
+    }
+
+    pub fn scene(
+        &self,
+        project: &Project,
+        catalog: &ScreenCatalog,
+        id: &str,
+    ) -> Result<Scene, String> {
+        let key = project.screen_key(false, &catalog.legacy_base_id, id);
+        Ok(projects::load_document(&key)?
+            .and_then(|document| document.scene)
+            .unwrap_or_else(|| self.seed(id)))
+    }
+}
+
+pub fn source(project: &Project) -> Result<ProjectSource, String> {
+    if let Some(bundle) = saved(project)? {
+        return Ok(ProjectSource {
+            screens: bundle.screens,
+            poster: bundle.poster,
+            handoff: bundle.handoff,
+            library: Some(bundle.library),
+        });
+    }
+    let screens = if project.id == journey::PROJECT {
+        journey::SCREENS
+            .iter()
+            .map(|screen| BundleScreen {
+                info: screen.info(),
+                scene: screen.initial_scene(),
+            })
+            .collect()
+    } else {
+        vec![BundleScreen {
+            info: ScreenInfo {
+                id: "main".into(),
+                title: project.title.clone(),
+                action: None,
+            },
+            scene: project.initial_scene(),
+        }]
+    };
+    Ok(ProjectSource {
+        screens,
+        poster: project.is_poster(),
+        handoff: (project.id == journey::PROJECT).then(|| journey::HANDOFF.to_owned()),
+        library: crate::drafts::recovery_library(&project.storage_key(false)),
+    })
+}
+
 fn capture(
     project: &Project,
     replacement: Option<(&str, Scene)>,
     library: Option<Vec<ComponentVariant>>,
 ) -> Result<ProjectBundle, String> {
-    let mut bundle = match saved(project)? {
-        Some(bundle) => bundle,
-        None => {
-            let screens = if project.id == journey::PROJECT {
-                journey::SCREENS
-                    .iter()
-                    .map(|screen| BundleScreen {
-                        info: screen.info(),
-                        scene: screen.initial_scene(),
-                    })
-                    .collect()
-            } else {
-                vec![BundleScreen {
-                    info: ScreenInfo {
-                        id: "main".into(),
-                        title: project.title.clone(),
-                        action: None,
-                    },
-                    scene: project.initial_scene(),
-                }]
-            };
-            ProjectBundle {
-                version: VERSION,
-                title: project.title.clone(),
-                poster: project.is_poster(),
-                handoff: (project.id == journey::PROJECT).then(|| journey::HANDOFF.to_owned()),
-                screens,
-                library: match crate::drafts::recovery_library(&project.storage_key(false)) {
-                    Some(library) => library,
-                    None if library.is_some() => Vec::new(),
-                    None => components::live_library()?,
-                },
-            }
-        }
-    };
-    if let Some(library) = library {
-        bundle.library = library;
-    }
+    let source = source(project)?;
+    let catalog = crate::screens::catalog(project, source.screen_info());
     let mut replacement = replacement;
-    for (index, screen) in bundle.screens.iter_mut().enumerate() {
-        if replacement
-            .as_ref()
-            .is_some_and(|(id, _)| *id == screen.info.id)
-        {
-            if let Some((_, scene)) = replacement.take() {
-                screen.scene = scene;
-            }
-            continue;
-        }
-        let key = project.screen_key(false, (index > 0).then_some(screen.info.id.as_str()));
-        if let Some(scene) = projects::load_document(&key)?.and_then(|document| document.scene) {
-            screen.scene = scene;
-        }
+    let mut screens = Vec::new();
+    for info in &catalog.screens {
+        let scene = if replacement.as_ref().is_some_and(|(id, _)| *id == info.id) {
+            replacement.take().expect("Replacement scene").1
+        } else {
+            source.scene(project, &catalog, &info.id)?
+        };
+        screens.push(BundleScreen {
+            info: info.clone(),
+            scene,
+        });
     }
     if replacement.is_some() {
         return Err("Screen not found in this project.".into());
     }
-    Ok(bundle)
+    Ok(ProjectBundle {
+        version: VERSION,
+        title: project.title.clone(),
+        poster: source.poster,
+        handoff: source.handoff,
+        screens,
+        library: match library.or(source.library) {
+            Some(library) => library,
+            None => components::live_library()?,
+        },
+    })
 }
 
 pub fn export_unsaved(

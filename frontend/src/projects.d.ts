@@ -14,7 +14,7 @@ export const Project: {
     isPoster(project: Project): boolean;
     href(project: Project): string;
     storageKey(project: Project, server: boolean): string;
-    screenKey(project: Project, server: boolean, screen?: string | null | undefined): string;
+    screenKey(project: Project, server: boolean, legacyBaseId: string, screenId: string): string;
     initialScene(project: Project): Scene;
     load(project: Project, server: boolean): {
         TAG: "Ok";

@@ -111,9 +111,9 @@ export const Project = {
     return `agent-pixel:bundle:${project.id}`;
   },
 
-  screenKey(project, server, screen) {
+  screenKey(project, server, legacyBaseId, screenId) {
     const base = Project.storageKey(project, server);
-    return screen != null ? `${base}:${screen}` : base;
+    return screenId === legacyBaseId ? base : `${base}:${screenId}`;
   },
 
   initialScene(project) {

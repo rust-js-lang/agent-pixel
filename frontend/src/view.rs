@@ -10,6 +10,7 @@ use pixel_geometry::{
     assets::ImageAsset,
     hierarchy::{LayerGroup, LayerNode},
     scene::{Author, ComponentInstance, Edit, Layer, Patch, Scene},
+    screens::ScreenEdit,
 };
 use react::{CSSProperties, JSX, event::PointerEvent, jsx, use_state};
 use std::cell::RefCell;
@@ -446,24 +447,92 @@ fn journey_navigation(
     current: &pixel_geometry::bundle::ScreenInfo,
     preview: bool,
 ) -> JSX::Element {
-    let screens = editor.screens.iter().map(|screen| jsx! {
+    let screens = editor.screen_catalog.screens.iter().map(|screen| jsx! {
         <a key={screen.id.clone()} href={journey::href(&editor.project.id, &screen.id, preview)}
-            aria-current={if screen.id == current.id { "step" } else { "false" }}>{screen.title.clone()}</a>
+            aria-current={if screen.id == current.id { "step" } else { "false" }}
+            aria-disabled={editor.save_failed || editor.busy}
+            onClick={move |event| {
+                if crate::EDITOR.with_borrow(|editor| editor.save_failed || editor.busy) {
+                    event.prevent_default();
+                }
+            }}>{screen.title.clone()}</a>
     }).collect::<Vec<_>>();
+    let title = if editor
+        .screen_catalog
+        .screens
+        .iter()
+        .any(|screen| screen.action.is_some())
+    {
+        "Journey screens"
+    } else {
+        "Screens"
+    };
     let name = if preview {
         "Edit screen"
     } else {
         "Play prototype"
     };
     jsx! {
-        <nav className={if preview { JOURNEY.journey_navigation() } else { format!("{} {}", JOURNEY.journey_navigation(), JOURNEY.editor_navigation()) }} aria-label="Journey screens">
-            <h3>"Journey screens"</h3>
+        <nav className={if preview { JOURNEY.journey_navigation() } else { format!("{} {}", JOURNEY.journey_navigation(), JOURNEY.editor_navigation()) }} aria-label={title}>
+            <h3>{title}</h3>
             <div className={JOURNEY.journey_steps()}>{screens}</div>
             <div className={JOURNEY.journey_actions()}>
                 {current.action.is_some().then(|| jsx! { <a className={JOURNEY.journey_mode()} href={journey::href(&editor.project.id, &current.id, !preview)}>{name}</a> })}
                 {editor.handoff.as_ref().map(|url| jsx! { <a href={url.clone()}>"Developer handoff ↗"</a> })}
             </div>
         </nav>
+    }
+}
+
+fn screen_manager(editor: &Editor) -> JSX::Element {
+    let disabled = editor.busy || editor.save_failed || editor.recovery.is_some();
+    let current = editor.screen.as_ref().filter(|_| !editor.screen_removed);
+    let management = current.map(|screen| {
+        let index = editor.screen_catalog.screens.iter().position(|item| item.id == screen.id).expect("Active screen");
+        let count = editor.screen_catalog.screens.len();
+        let rename_id = screen.id.clone();
+        let copy_id = screen.id.clone();
+        let copy_title: String = format!("{} copy", screen.title).chars().take(80).collect();
+        let up = screen.id.clone();
+        let down = screen.id.clone();
+        let remove = screen.id.clone();
+        let remove_label = format!("Remove \"{}\" from this project?", screen.title);
+        jsx! {
+            <>
+                <form key={format!("{}-{}", screen.id, screen.title)} aria-label="Rename screen" action={move |data: &webapi::FormData| {
+                    if let Some(FormDataEntryValue::Str(title)) = data.get("title") {
+                        crate::apply_screen_edit(ScreenEdit::Rename { id: rename_id.clone(), title: title.to_owned() }, false);
+                    }
+                }}>
+                    <label>"Screen name"<input name="title" defaultValue={screen.title.clone()} required maxLength={80} disabled={disabled} /></label>
+                    <button type="submit" disabled={disabled}>"Rename screen"</button>
+                </form>
+                <button type="button" disabled={disabled} onClick={move |_| crate::apply_screen_edit(ScreenEdit::Duplicate { id: copy_id.clone(), title: copy_title.clone() }, true)}>"Duplicate screen"</button>
+                <div className={EDITOR_STYLES.component_position()}>
+                    <button type="button" disabled={disabled || index == 0} onClick={move |_| crate::apply_screen_edit(ScreenEdit::Reorder { id: up.clone(), index: index.saturating_sub(1) }, false)}>"Move up"</button>
+                    <button type="button" disabled={disabled || index + 1 >= count} onClick={move |_| crate::apply_screen_edit(ScreenEdit::Reorder { id: down.clone(), index: index + 1 }, false)}>"Move down"</button>
+                </div>
+                <button type="button" disabled={disabled || count <= 1} onClick={move |_| {
+                    if window().confirm(Some(&remove_label)) {
+                        crate::apply_screen_edit(ScreenEdit::Delete { id: remove.clone() }, true);
+                    }
+                }}>"Remove screen"</button>
+            </>
+        }
+    });
+    jsx! {
+        <details className={EDITOR_STYLES.component_library()}>
+            <summary>"Manage screens"</summary>
+            <form aria-label="Add screen" action={|data: &webapi::FormData| {
+                if let Some(FormDataEntryValue::Str(title)) = data.get("title") {
+                    crate::apply_screen_edit(ScreenEdit::Create { title: title.to_owned() }, true);
+                }
+            }}>
+                <label>"New screen name"<input name="title" required maxLength={80} disabled={disabled} /></label>
+                <button type="submit" disabled={disabled}>"Add screen"</button>
+            </form>
+            {management}
+        </details>
     }
 }
 
@@ -542,7 +611,8 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
             )
         })
         .collect::<Vec<_>>();
-    let disabled = editor.busy || editor.recovery.is_some() || scene.is_none();
+    let disabled =
+        editor.busy || editor.recovery.is_some() || editor.screen_removed || scene.is_none();
     let selected_layer = layers
         .iter()
         .find(|layer| Some(layer.id.as_str()) == selected);
@@ -623,7 +693,8 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
                         } } else { jsx! {
                             <>
                                 <h2>{document_title}</h2>
-                                {screen.filter(|screen| screen.action.is_some() || editor.screens.len() > 1).map(|screen| journey_navigation(editor, screen, false))}
+                                {screen.map(|screen| journey_navigation(editor, screen, false))}
+                                {(!editor.server).then(|| screen_manager(editor))}
                                 <h3>"Layers"</h3>
                                 {layer_panel(scene, selected, disabled)}
                             </>

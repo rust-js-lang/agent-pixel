@@ -39,6 +39,41 @@ struct Annotations {
     read_only_hint: bool,
 }
 
+const SCREEN_EDIT_SCHEMA: &str = r#"{
+    "type":"object","required":["revision","edit"],"additionalProperties":false,"properties":{
+        "revision":{"type":"string","description":"Current project screen revision from list_screens"},
+        "edit":{"oneOf":[
+            {"type":"object","required":["op","title"],"additionalProperties":false,"properties":{"op":{"const":"create"},"title":{"type":"string"}}},
+            {"type":"object","required":["op","id","title"],"additionalProperties":false,"properties":{"op":{"const":"rename"},"id":{"type":"string"},"title":{"type":"string"}}},
+            {"type":"object","required":["op","id","title"],"additionalProperties":false,"properties":{"op":{"const":"duplicate"},"id":{"type":"string"},"title":{"type":"string"}}},
+            {"type":"object","required":["op","id","index"],"additionalProperties":false,"properties":{"op":{"const":"reorder"},"id":{"type":"string"},"index":{"type":"integer","minimum":0,"description":"Zero-based position in the screen list"}}},
+            {"type":"object","required":["op","id"],"additionalProperties":false,"properties":{"op":{"const":"delete"},"id":{"type":"string"}}}
+        ]}
+    }
+}"#;
+const SCREEN_OPEN_SCHEMA: &str = r#"{"type":"object","required":["id"],"additionalProperties":false,"properties":{"id":{"type":"string","description":"Stable screen ID from list_screens"}}}"#;
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ScreenMutation {
+    revision: String,
+    edit: pixel_geometry::screens::ScreenEdit,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OpenScreen {
+    id: String,
+}
+
+fn open_screen(input: Option<&Unknown>) -> Result<String, String> {
+    let OpenScreen { id } = decode(input, "Provide a screen ID.")?;
+    let href = crate::screen_href(&id)?;
+    let json = serde_json::json!({ "id": id, "href": href }).to_string();
+    webapi::window_global::location().assign(&href);
+    Ok(json)
+}
+
 const PANEL_SCHEMA: &str = r#"{"type":"object","required":["panel"],"additionalProperties":false,"properties":{"panel":{"enum":["file","assets"],"type":"string"}}}"#;
 
 #[derive(Deserialize)]
@@ -164,6 +199,29 @@ fn history_tool(name: &'static str, description: &'static str, command: &'static
 
 pub async fn register_editor_tools() -> Result<bool, &'static JsError> {
     register(vec![
+        Tool {
+            name: "list_screens",
+            description: "List the current project's screens, stable IDs, active screen and screen list revision.",
+            input_schema: parse(READ_SCHEMA),
+            annotations: Some(Annotations { read_only_hint: true }),
+            execute: Box::new(|_| js::promise(async { tool_result(crate::screen_list()) })),
+        },
+        Tool {
+            name: "edit_screens",
+            description: "Create, name, duplicate, reorder or delete a screen at the revision from list_screens. Returns the updated list and the affected or next screen ID. Use open_screen to navigate.",
+            input_schema: parse(SCREEN_EDIT_SCHEMA),
+            annotations: None,
+            execute: Box::new(|input| js::promise(async move {
+                let result = match decode(input, "Provide a screen list revision and edit.") {
+                    Ok(ScreenMutation { revision, edit }) => crate::change_screens(&revision, edit).await.map(|updated| {
+                        serde_json::json!({ "revision": updated.catalog.revision, "screens": updated.catalog.screens, "screenId": updated.screen_id }).to_string()
+                    }),
+                    Err(error) => Err(error),
+                };
+                tool_result(result)
+            })),
+        },
+        dashboard_tool("open_screen", "Open a screen by stable ID in this tab. Discover the editor's tools again after navigation.", SCREEN_OPEN_SCHEMA, false, open_screen),
         Tool {
             name: "show_workspace_panel",
             description: "Show the editor's File panel with screens and layers or the Assets panel with image and component placement.",

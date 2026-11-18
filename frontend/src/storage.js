@@ -7,6 +7,7 @@ import { $displayJsonError, $fromJson, $json, $try } from "@rust-js/std";
 const DATABASE = "agent-pixel";
 export const DRAFTS = "drafts";
 export const PROJECTS = "projects";
+export const SCREENS = "screens";
 
 let db;
 
@@ -15,7 +16,7 @@ async function database() {
   if (db$1 != null) {
     return { TAG: "Ok", _0: db$1 };
   }
-  const result = $try(() => indexedDB.open(DATABASE, 2));
+  const result = $try(() => indexedDB.open(DATABASE, 3));
   const result$1 = result.TAG === "Err" ? { TAG: "Err", _0: message(result._0) } : result;
   if (result$1.TAG === "Err") {
     return result$1;
@@ -27,7 +28,7 @@ async function database() {
       const db = value != null ? (value instanceof IDBDatabase ? value : undefined) : undefined;
       if (db != null) {
         const names = db.objectStoreNames;
-        for (const store of [DRAFTS, PROJECTS]) {
+        for (const store of [DRAFTS, PROJECTS, SCREENS]) {
           if (!names.contains(store)) {
             db.createObjectStore(store);
           }
@@ -106,6 +107,11 @@ export async function writeTransaction(store) {
     return result;
   }
   return { TAG: "Ok", _0: result._0.transaction(store, "readwrite", { durability: "strict" }) };
+}
+
+export async function writeScreensAndDrafts() {
+  const stores = [SCREENS, DRAFTS];
+  return await writeTransaction(stores);
 }
 
 export function committed(tx, error) {
