@@ -27,7 +27,7 @@ The worker serializes mutations in arrival order. Validate identity, geometry an
 
 ## Agent workflow
 
-Expose a read tool to discover artboard dimensions, layer IDs and bounds. A write tool creates a layer or patches fields on an existing ID. For example, read the scene, take the ID of its ellipse and set its horizontal origin to half the difference between the artboard width and the ellipse width. Return the committed scene so an agent can verify placement. Feature-detect browser WebMCP registration and keep the editor usable across browser support levels. [WebMCP imperative API](https://developer.chrome.com/docs/ai/webmcp/imperative)
+Expose a read tool to discover artboard dimensions, layer IDs and bounds. A write tool creates a layer or patches fields on an existing ID. For example, read the scene, take the ID of its ellipse and set its horizontal origin to half the difference between the artboard width and the ellipse width. Return the committed scene so an agent can verify placement. Feature-detect browser WebMCP registration and keep the editor usable across browser support levels. [WebMCP imperative API](https://developer.chrome.com/docs/ai/webmcp/imperative-api)
 
 ## Rust across runtimes
 
