@@ -2,7 +2,7 @@
 
 A vector design editor for people and WebMCP agents. The React editor and document worker are written in Rust and compiled to JavaScript by rust-js. The optional server runs native Rust and shares the worker's document model.
 
-[Open Agent Pixel](https://rust-js-lang.github.io/agent-pixel/) · [Read the design](DESIGN.md)
+[Open Agent Pixel](https://rust-js-lang.github.io/agent-pixel/) · [Read the design](DESIGN.md) · [Production roadmap](ROADMAP.md)
 
 ## Run locally
 
