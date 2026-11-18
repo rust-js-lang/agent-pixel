@@ -8,6 +8,8 @@ export interface Layer {
     width: number;
     height: number;
     fill: string;
+    text?: string | undefined;
+    fontSize?: number | undefined;
 }
 
 export interface Scene {
@@ -16,6 +18,7 @@ export interface Scene {
 }
 
 export const Scene: {
+    blank(): Scene;
     poster(): Scene;
     validate(scene: Scene): {
         TAG: "Ok";
@@ -46,6 +49,8 @@ export interface Patch {
     width?: number | undefined;
     height?: number | undefined;
     fill?: string | undefined;
+    text?: string | undefined;
+    fontSize?: number | undefined;
 }
 
 export interface Design {

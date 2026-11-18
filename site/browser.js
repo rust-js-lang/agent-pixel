@@ -25,8 +25,8 @@ export function requestWorker(command, json) {
   });
 }
 
-export function workspaceQuery() {
-  return new URLSearchParams(location.search).has("server");
+export function workspaceQuery(name) {
+  return new URLSearchParams(location.search).has(name);
 }
 
 export function loadDraft(key) { return localStorage.getItem(key) ?? undefined; }

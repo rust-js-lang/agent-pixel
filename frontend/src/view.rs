@@ -41,7 +41,9 @@ fn percent(value: i32, extent: i32) -> String {
 }
 
 fn label(layer: &Layer) -> String {
-    if layer.id.len() == 36 {
+    if let Some(text) = &layer.text {
+        text.clone()
+    } else if layer.id.len() == 36 {
         format!("{} {}", layer.kind, &layer.id[..4])
     } else {
         layer.id.replace('-', " ")
@@ -114,16 +116,29 @@ fn shape(layer: &Layer) -> JSX::Element {
         .top(percent(layer.y, BOARD_HEIGHT))
         .width(percent(layer.width, BOARD_WIDTH))
         .height(percent(layer.height, BOARD_HEIGHT))
-        .background(layer.fill.clone())
-        .border_radius(if layer.kind == "ellipse" { "50%" } else { "0" });
+        .background(if layer.kind == "text" {
+            "transparent".into()
+        } else {
+            layer.fill.clone()
+        })
+        .border_radius(if layer.kind == "ellipse" { "50%" } else { "0" })
+        .color(layer.fill.clone())
+        .font_size(layer.font_size.map_or_else(String::new, |size| {
+            format!("{}cqw", f64::from(size) / f64::from(BOARD_WIDTH) * 100.0)
+        }));
+    let class = if layer.kind == "text" {
+        "shape text-layer"
+    } else {
+        "shape"
+    };
     jsx! {
-        <button key={layer.id.clone()} className="shape" style={styles}
+        <button key={layer.id.clone()} className={class} style={styles}
             aria-label={format!("Select {}", label(layer))}
             onClick={move |_| select(id.clone())}
             onPointerDown={move |event| begin_drag(&captured, event)}
             onPointerMove={move_drag}
             onPointerUp={|event| end_drag(event, true)}
-            onPointerCancel={|event| end_drag(event, false)} />
+            onPointerCancel={|event| end_drag(event, false)}>{layer.text.clone()}</button>
     }
 }
 
@@ -146,6 +161,7 @@ enum Field {
     Y,
     Width,
     Height,
+    FontSize,
 }
 
 fn numeric_field(field: Field, layer: &Layer, version: u32) -> JSX::Element {
@@ -154,6 +170,7 @@ fn numeric_field(field: Field, layer: &Layer, version: u32) -> JSX::Element {
         Field::Y => ("y", "Y", layer.y),
         Field::Width => ("width", "W", layer.width),
         Field::Height => ("height", "H", layer.height),
+        Field::FontSize => ("font size", "Px", layer.font_size.unwrap_or(20)),
     };
     let id = layer.id.clone();
     jsx! {
@@ -168,7 +185,7 @@ fn numeric_field(field: Field, layer: &Layer, version: u32) -> JSX::Element {
                     } else if value as i32 != previous {
                         let mut patch = Patch { id: Some(id.clone()), ..Patch::default() };
                         let next = Some(value as i32);
-                        match field { Field::X => patch.x = next, Field::Y => patch.y = next, Field::Width => patch.width = next, Field::Height => patch.height = next }
+                        match field { Field::X => patch.x = next, Field::Y => patch.y = next, Field::Width => patch.width = next, Field::Height => patch.height = next, Field::FontSize => patch.font_size = next }
                         edit(patch);
                     }
                 }} />
@@ -182,11 +199,23 @@ fn inspector(layer: &Layer, version: u32) -> JSX::Element {
         .into_iter()
         .map(|field| numeric_field(field, layer, version))
         .collect::<Vec<_>>();
+    let text_id = layer.id.clone();
+    let text = layer.text.as_ref().map(|text| jsx! {
+        <>
+            <h3>"Text"</h3>
+            <label className="text-field">
+                <input key={format!("{text_id}-{text}-{version}")} aria-label="Text content"
+                    defaultValue={text.clone()} onBlur={move |event| edit(Patch { id: Some(text_id.clone()), text: Some(event.current_target().value()), ..Patch::default() })} />
+            </label>
+            {numeric_field(Field::FontSize, layer, version)}
+        </>
+    });
     jsx! {
         <>
             <h2 id="name">{label(layer)}</h2><hr /><h3>"Geometry"</h3>
             <form id="fields" onSubmit={|event| event.prevent_default()}>{fields}</form>
-            <h3>"Fill"</h3>
+            {text}
+            <h3>{if layer.kind == "text" { "Color" } else { "Fill" }}</h3>
             <label className="color">
                 <input type="color" id="fill" value={layer.fill.clone()}
                     onChange={move |event| edit(Patch {
@@ -215,31 +244,38 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
         .iter()
         .find(|layer| Some(layer.id.as_str()) == selected)
         .map(|layer| inspector(layer, editor.fields_version));
+    let document_title = if editor.mockup {
+        "Web app mockup"
+    } else {
+        "Orbit study"
+    };
     let disabled = editor.busy || editor.document.scene.is_none();
     jsx! {
         <>
             <header>
                 <b className="brand"><i>"▦"</i>" Agent Pixel"</b>
-                <span className="crumb">"Workspace / "<strong>"Orbit study"</strong></span>
+                <span className="crumb">"Workspace / "<strong>{document_title}</strong></span>
+                {if editor.mockup { jsx! { <a href="./">"Orbit study"</a> } } else { jsx! { <a href="?design">"Web app mockup"</a> } }}
                 <a href="https://github.com/rust-js-lang/agent-pixel/blob/main/DESIGN.md">"Design doc ↗"</a>
             </header>
             <main>
                 <aside>
-                    <div className="eyebrow">"DOCUMENT"</div><h2>"Orbit study"</h2>
-                    <p>"Poster composition"</p><hr /><h3>"Layers"</h3><div id="layers">{layer_list}</div>
+                    <div className="eyebrow">"DOCUMENT"</div><h2>{document_title}</h2>
+                    <p>{if editor.mockup { "Mobile artboard" } else { "Poster composition" }}</p><hr /><h3>"Layers"</h3><div id="layers">{layer_list}</div>
                 </aside>
                 <section className="workspace" aria-label="Canvas">
                     <div className="sheet">
                         <div className="legend">"ARTBOARD 01" <span>{format!("{BOARD_WIDTH} × {BOARD_HEIGHT}")}</span></div>
-                        <div id="art">
-                            <div className="imprint">"FORM STUDIES" <span>"SERIES 01 / 03"</span></div>
+                        <div id="art" className={if editor.mockup { "mockup" } else { "poster" }}>
+                            {(!editor.mockup).then(|| jsx! { <div className="imprint">"FORM STUDIES" <span>"SERIES 01 / 03"</span></div> })}
                             <div id="shapes">{shape_list}</div>
-                            <div className="caption"><b>"Orbit study."</b><small>"KINETIC FORMS" <span>"FIG. 01"</span></small></div>
+                            {(!editor.mockup).then(|| jsx! { <div className="caption"><b>"Orbit study."</b><small>"KINETIC FORMS" <span>"FIG. 01"</span></small></div> })}
                         </div>
                     </div>
                     <div className="tools">
                         <button id="rect" disabled={disabled} onClick={|_| add("rectangle")}>"▢  Rectangle +"</button>
                         <button id="ellipse" disabled={disabled} onClick={|_| add("ellipse")}>"○  Ellipse +"</button>
+                        <button disabled={disabled} onClick={|_| edit(Patch { kind: Some("text".into()), text: Some("Label".into()), font_size: Some(20), width: Some(170), height: Some(32), fill: Some("#20231f".into()), ..Patch::default() })}>"T  Text +"</button>
                     </div>
                 </section>
                 <aside className="properties">

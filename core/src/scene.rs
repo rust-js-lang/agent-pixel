@@ -16,6 +16,10 @@ pub struct Layer {
     pub width: i32,
     pub height: i32,
     pub fill: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    #[serde(rename = "fontSize", skip_serializing_if = "Option::is_none")]
+    pub font_size: Option<i32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -40,6 +44,9 @@ pub struct Patch {
     pub width: Option<i32>,
     pub height: Option<i32>,
     pub fill: Option<String>,
+    pub text: Option<String>,
+    #[serde(rename = "fontSize")]
+    pub font_size: Option<i32>,
 }
 
 impl Layer {
@@ -52,17 +59,31 @@ impl Layer {
             width: size,
             height: size,
             fill: fill.into(),
+            text: None,
+            font_size: None,
         }
     }
 
     fn validate(&self) -> Result<(), &'static str> {
-        if !matches!(self.kind.as_str(), "ellipse" | "rectangle")
+        if !matches!(self.kind.as_str(), "ellipse" | "rectangle" | "text")
             || !self
                 .fill
                 .strip_prefix('#')
                 .is_some_and(|hex| hex.len() == 6 && hex.bytes().all(|b| b.is_ascii_hexdigit()))
         {
             return Err("Choose a shape and a six-digit hex fill.");
+        }
+        if self.kind == "text" {
+            if !self
+                .text
+                .as_ref()
+                .is_some_and(|text| !text.trim().is_empty() && text.len() <= 512)
+                || !self.font_size.is_some_and(|size| (8..=96).contains(&size))
+            {
+                return Err("Text needs content and a font size from 8 to 96.");
+            }
+        } else if self.text.is_some() || self.font_size.is_some() {
+            return Err("Text properties require a text layer.");
         }
         if !fits_board(self.x, self.y, self.width, self.height) {
             return Err("Keep the entire shape inside the artboard.");
@@ -81,6 +102,13 @@ impl Layer {
 }
 
 impl Scene {
+    pub fn blank() -> Self {
+        Self {
+            version: VERSION,
+            layers: Vec::new(),
+        }
+    }
+
     pub fn poster() -> Self {
         Self {
             version: VERSION,
@@ -119,6 +147,8 @@ impl Scene {
             width,
             height,
             fill,
+            text,
+            font_size,
         } = patch;
         if kind.is_none()
             && x.is_none()
@@ -126,6 +156,8 @@ impl Scene {
             && width.is_none()
             && height.is_none()
             && fill.is_none()
+            && text.is_none()
+            && font_size.is_none()
         {
             return Err("Specify shape properties.");
         }
@@ -149,6 +181,8 @@ impl Scene {
                 width: 80,
                 height: 80,
                 fill: ORANGE.into(),
+                text: None,
+                font_size: None,
             },
         };
         if let Some(kind) = kind {
@@ -168,6 +202,12 @@ impl Scene {
         }
         if let Some(fill) = fill {
             layer.fill = fill;
+        }
+        if let Some(text) = text {
+            layer.text = Some(text);
+        }
+        if let Some(font_size) = font_size {
+            layer.font_size = Some(font_size);
         }
         layer.validate()?;
         let id = layer.id.clone();

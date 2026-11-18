@@ -10,6 +10,7 @@ import {
   workspaceQuery,
 } from "../../site/browser.js";
 import {
+  Scene,
   designDeserialize_deserialize,
   designSerialize_serialize,
   documentDeserialize_deserialize,
@@ -36,6 +37,7 @@ let root;
 const editor = {
   document: { revision: 0n },
   server: false,
+  mockup: false,
   busy: false,
   fieldsVersion: 0,
   status: "",
@@ -65,7 +67,11 @@ const Editor = {
   },
 
   storageKey(editor) {
-    return editor.server ? "agent-pixel:poster:v1:server" : "agent-pixel:poster:v1";
+    return editor.mockup
+      ? "agent-pixel:web-app:v1"
+      : editor.server
+        ? "agent-pixel:poster:v1:server"
+        : "agent-pixel:poster:v1";
   },
 };
 
@@ -82,9 +88,11 @@ const TOOLS = `[
     "inputSchema": {
       "type":"object","minProperties":1,"additionalProperties":false,
       "properties":{
-        "id":{"type":"string"},"kind":{"type":"string","enum":["rectangle","ellipse"]},
+        "id":{"type":"string"},"kind":{"type":"string","enum":["rectangle","ellipse","text"]},
         "x":{"type":"integer"},"y":{"type":"integer"},"width":{"type":"integer"},"height":{"type":"integer"},
-        "fill":{"type":"string","pattern":"^#[0-9A-Fa-f]{6}$"}
+        "fill":{"type":"string","description":"Hex fill or text color","pattern":"^#[0-9A-Fa-f]{6}$"},
+        "text":{"type":"string","minLength":1,"maxLength":512,"description":"Content for a text layer"},
+        "fontSize":{"type":"integer","minimum":8,"maximum":96}
       }
     }
   }
@@ -156,11 +164,13 @@ async function fetchDocument(body) {
 }
 
 async function start() {
-  const server = workspaceQuery();
+  const mockup = workspaceQuery("design");
+  const server = !mockup && workspaceQuery("server");
   $withBorrowMut(
     editor,
     (editor) => {
       editor.server = server;
+      editor.mockup = mockup;
     },
     true,
   );
@@ -192,11 +202,20 @@ async function start() {
   }
   const saved = tmp[0];
   let warning = tmp[1];
-  const result$3 = await request("read", "null");
-  if (result$3.TAG === "Err") {
-    return result$3;
+  let design;
+  if (mockup) {
+    const result = await restore(Scene.blank());
+    if (result.TAG === "Err") {
+      return result;
+    }
+    design = result._0;
+  } else {
+    const result = await request("read", "null");
+    if (result.TAG === "Err") {
+      return result;
+    }
+    design = result._0;
   }
-  let design = result$3._0;
   if (saved.scene != null) {
     const value = await restore(saved.scene);
     if (value.TAG === "Ok") {

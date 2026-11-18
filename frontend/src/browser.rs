@@ -11,7 +11,7 @@ pub fn request_worker(command: &str, json: &str) -> Promise<Result<String, &'sta
 }
 
 #[cfg_attr(rust_js, rust_js::link_name = "../../site/browser.js#workspaceQuery")]
-pub fn server_mode() -> bool {
+pub fn workspace_query(name: &str) -> bool {
     unreachable!()
 }
 

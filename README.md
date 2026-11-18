@@ -43,3 +43,22 @@ bun run test:e2e
 ~~~
 
 Playwright starts the native Rust server on loopback port 4187 with a temporary document directory. It covers pointer dragging, inspector edits, reload persistence and recovery from a conflicting server save. The agent tests discover and invoke the registered tools using Playwright's `page.webmcp` API with WebMCP enabled in Chromium. The Pages workflow runs the suite and uploads traces on failure.
+
+## Design a web app with a coding agent
+
+Open [Web app mockup](https://rust-js-lang.github.io/agent-pixel/?design) in a Chromium session with WebMCP enabled. It opens a blank mobile artboard on the first visit and keeps its own draft in the browser.
+
+1. Discover the tools with `page.webmcp.tools()` and call `read_design` for the dimensions and current layers.
+2. Call `edit_layer` with no ID to add a rectangle, ellipse or text layer. Place background layers first because newer layers paint on top.
+3. Keep the returned `edited` IDs and pass an ID back to change a layer. Read the design at the end to verify the positions, colors and content.
+
+To place a heading, call the tool with properties like these.
+
+~~~js
+await page.webmcp.callTool("edit_layer", {
+  kind: "text", text: "Your tasks", x: 24, y: 59,
+  width: 380, height: 52, fontSize: 38, fill: "#202b29"
+});
+~~~
+
+The [task dashboard test](e2e/design.spec.js) builds a complete mockup this way and verifies that its layers survive a reload.

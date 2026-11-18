@@ -13,6 +13,7 @@ import {
   $position,
   $stripPrefix,
   $toJson,
+  $trim,
   $utf8Bytes,
 } from "@rust-js/std";
 
@@ -33,8 +34,20 @@ export function layerDeserialize_deserialize(json) {
       ["width", $json.i32],
       ["height", $json.i32],
       ["fill", $json.string],
+      ["text", $json.option($json.string)],
+      ["fontSize", $json.option($json.i32)],
     ],
-    ([id, kind, x, y, width, height, fill]) => ({ id, kind, x, y, width, height, fill }),
+    ([id, kind, x, y, width, height, fill, text, fontSize]) => ({
+      id,
+      kind,
+      x,
+      y,
+      width,
+      height,
+      fill,
+      text,
+      fontSize,
+    }),
   );
 }
 
@@ -54,6 +67,14 @@ export function layerSerialize_serialize(layer, json) {
   json.int(layer.height);
   json.key("fill");
   json.string(layer.fill);
+  if (layer.text != null) {
+    json.key("text");
+    json.string(layer.text);
+  }
+  if (layer.fontSize != null) {
+    json.key("fontSize");
+    json.int(layer.fontSize);
+  }
   json.endObject();
 }
 
@@ -117,8 +138,20 @@ export function patchDeserialize_deserialize(json) {
       ["width", $json.option($json.i32)],
       ["height", $json.option($json.i32)],
       ["fill", $json.option($json.string)],
+      ["text", $json.option($json.string)],
+      ["fontSize", $json.option($json.i32)],
     ],
-    ([id, kind, x, y, width, height, fill]) => ({ id, kind, x, y, width, height, fill }),
+    ([id, kind, x, y, width, height, fill, text, fontSize]) => ({
+      id,
+      kind,
+      x,
+      y,
+      width,
+      height,
+      fill,
+      text,
+      fontSize,
+    }),
     { deny: true },
   );
 }
@@ -167,6 +200,18 @@ export function patchSerialize_serialize(patch, json) {
   } else {
     json.string(patch.fill);
   }
+  json.key("text");
+  if (patch.text == null) {
+    json.null();
+  } else {
+    json.string(patch.text);
+  }
+  json.key("fontSize");
+  if (patch.fontSize == null) {
+    json.null();
+  } else {
+    json.int(patch.fontSize);
+  }
   json.endObject();
 }
 
@@ -184,7 +229,7 @@ const Layer = {
   },
 
   validate(layer) {
-    if (layer.kind === "ellipse" || layer.kind === "rectangle") {
+    if (layer.kind === "ellipse" || layer.kind === "rectangle" || layer.kind === "text") {
       const stripPrefix = $stripPrefix(layer.fill, "#");
       if (
         stripPrefix != null &&
@@ -193,6 +238,20 @@ const Layer = {
           (b) => (b >= 48 && b <= 57) || (b >= 65 && b <= 70) || (b >= 97 && b <= 102),
         )
       ) {
+        if (layer.kind === "text") {
+          if (
+            layer.text == null ||
+            $trim(layer.text) === "" ||
+            $byteLen(layer.text) > 512 ||
+            layer.fontSize == null ||
+            !(8 <= layer.fontSize) ||
+            !(layer.fontSize <= 96)
+          ) {
+            return { TAG: "Err", _0: "Text needs content and a font size from 8 to 96." };
+          }
+        } else if (layer.text != null || layer.fontSize != null) {
+          return { TAG: "Err", _0: "Text properties require a text layer." };
+        }
         if (!fitsBoard(layer.x, layer.y, layer.width, layer.height)) {
           return { TAG: "Err", _0: "Keep the entire shape inside the artboard." };
         }
@@ -213,6 +272,13 @@ const Layer = {
 };
 
 export const Scene = {
+  blank() {
+    return {
+      version: VERSION,
+      layers: [],
+    };
+  },
+
   poster() {
     return {
       version: VERSION,
@@ -246,8 +312,17 @@ export const Scene = {
   },
 
   edit(scene, patch, newId) {
-    const { id, kind, x, y, width, height, fill } = patch;
-    if (kind == null && x == null && y == null && width == null && height == null && fill == null) {
+    const { id, kind, x, y, width, height, fill, text, fontSize } = patch;
+    if (
+      kind == null &&
+      x == null &&
+      y == null &&
+      width == null &&
+      height == null &&
+      fill == null &&
+      text == null &&
+      fontSize == null
+    ) {
       return { TAG: "Err", _0: "Specify shape properties." };
     }
     let index;
@@ -296,6 +371,12 @@ export const Scene = {
     }
     if (fill != null) {
       layer.fill = fill;
+    }
+    if (text != null) {
+      layer.text = text;
+    }
+    if (fontSize != null) {
+      layer.fontSize = fontSize;
     }
     const result = Layer.validate(layer);
     if (result.TAG === "Err") {

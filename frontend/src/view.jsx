@@ -50,9 +50,13 @@ function percent(value, extent) {
 }
 
 function label(layer) {
-  return $byteLen(layer.id) === 36
-    ? `${layer.kind} ${$strSlice(layer.id, 0, 4)}`
-    : layer.id.replaceAll("-", " ");
+  if (layer.text != null) {
+    return layer.text;
+  } else if ($byteLen(layer.id) === 36) {
+    return `${layer.kind} ${$strSlice(layer.id, 0, 4)}`;
+  } else {
+    return layer.id.replaceAll("-", " ");
+  }
 }
 
 function beginDrag(layer, event) {
@@ -120,13 +124,17 @@ function shape(layer) {
     top: percent(layer.y, BOARD_HEIGHT),
     width: percent(layer.width, BOARD_WIDTH),
     height: percent(layer.height, BOARD_HEIGHT),
-    background: layer.fill,
+    background: layer.kind === "text" ? "transparent" : layer.fill,
     borderRadius: layer.kind === "ellipse" ? "50%" : "0",
+    color: layer.fill,
+    fontSize:
+      layer.fontSize != null ? `${$displayF64((layer.fontSize / BOARD_WIDTH) * 100)}cqw` : "",
   };
+  const class$ = layer.kind === "text" ? "shape text-layer" : "shape";
   return (
     <button
       key={layer.id}
-      className="shape"
+      className={class$}
       style={styles}
       aria-label={`Select ${label(layer)}`}
       onClick={() => select(id)}
@@ -134,7 +142,9 @@ function shape(layer) {
       onPointerMove={moveDrag}
       onPointerUp={(event) => endDrag(event, true)}
       onPointerCancel={(event) => endDrag(event, false)}
-    />
+    >
+      {layer.text}
+    </button>
   );
 }
 
@@ -170,10 +180,14 @@ function numericField(field, layer, version) {
     name = "width";
     short = "W";
     previous = layer.width;
-  } else {
+  } else if (field === "Height") {
     name = "height";
     short = "H";
     previous = layer.height;
+  } else {
+    name = "font size";
+    short = "Px";
+    previous = layer.fontSize ?? 20;
   }
   const id = layer.id;
   return (
@@ -211,6 +225,9 @@ function numericField(field, layer, version) {
               case "Height":
                 patch.height = next;
                 break;
+              case "FontSize":
+                patch.fontSize = next;
+                break;
             }
             edit(patch);
           }
@@ -223,6 +240,22 @@ function numericField(field, layer, version) {
 function inspector(layer, version) {
   const id = layer.id;
   const fields = ["X", "Y", "Width", "Height"].map((field) => numericField(field, layer, version));
+  const textId = layer.id;
+  const text =
+    layer.text != null ? (
+      <>
+        <h3>Text</h3>
+        <label className="text-field">
+          <input
+            key={`${textId}-${layer.text}-${version}`}
+            aria-label="Text content"
+            defaultValue={layer.text}
+            onBlur={(event) => edit({ id: textId, text: event.currentTarget.value })}
+          />
+        </label>
+        {numericField("FontSize", layer, version)}
+      </>
+    ) : undefined;
   return (
     <>
       <h2 id="name">{label(layer)}</h2>
@@ -231,7 +264,8 @@ function inspector(layer, version) {
       <form id="fields" onSubmit={(event) => event.preventDefault()}>
         {fields}
       </form>
-      <h3>Fill</h3>
+      {text}
+      <h3>{layer.kind === "text" ? "Color" : "Fill"}</h3>
       <label className="color">
         <input
           type="color"
@@ -258,6 +292,7 @@ export function editor(editor) {
   const layerList = layers.toReversed().map((layer) => layerButton(layer, selected));
   const find = layers.find((layer) => layer.id === selected);
   const properties = find != null ? inspector(find, editor.fieldsVersion) : undefined;
+  const documentTitle = editor.mockup ? "Web app mockup" : "Orbit study";
   const disabled = editor.busy || editor.document.scene == null;
   return (
     <>
@@ -266,15 +301,16 @@ export function editor(editor) {
           <i>▦</i> Agent Pixel
         </b>
         <span className="crumb">
-          Workspace / <strong>Orbit study</strong>
+          Workspace / <strong>{documentTitle}</strong>
         </span>
+        {editor.mockup ? <a href="./">Orbit study</a> : <a href="?design">Web app mockup</a>}
         <a href="https://github.com/rust-js-lang/agent-pixel/blob/main/DESIGN.md">Design doc ↗</a>
       </header>
       <main>
         <aside>
           <div className="eyebrow">DOCUMENT</div>
-          <h2>Orbit study</h2>
-          <p>Poster composition</p>
+          <h2>{documentTitle}</h2>
+          <p>{editor.mockup ? "Mobile artboard" : "Poster composition"}</p>
           <hr />
           <h3>Layers</h3>
           <div id="layers">{layerList}</div>
@@ -284,17 +320,21 @@ export function editor(editor) {
             <div className="legend">
               ARTBOARD 01<span>{`${BOARD_WIDTH} × ${BOARD_HEIGHT}`}</span>
             </div>
-            <div id="art">
-              <div className="imprint">
-                FORM STUDIES<span>SERIES 01 / 03</span>
-              </div>
+            <div id="art" className={editor.mockup ? "mockup" : "poster"}>
+              {!editor.mockup && (
+                <div className="imprint">
+                  FORM STUDIES<span>SERIES 01 / 03</span>
+                </div>
+              )}
               <div id="shapes">{shapeList}</div>
-              <div className="caption">
-                <b>Orbit study.</b>
-                <small>
-                  KINETIC FORMS<span>FIG. 01</span>
-                </small>
-              </div>
+              {!editor.mockup && (
+                <div className="caption">
+                  <b>Orbit study.</b>
+                  <small>
+                    KINETIC FORMS<span>FIG. 01</span>
+                  </small>
+                </div>
+              )}
             </div>
           </div>
           <div className="tools">
@@ -303,6 +343,21 @@ export function editor(editor) {
             </button>
             <button id="ellipse" disabled={disabled} onClick={() => add("ellipse")}>
               {"○  Ellipse +"}
+            </button>
+            <button
+              disabled={disabled}
+              onClick={() =>
+                edit({
+                  kind: "text",
+                  text: "Label",
+                  fontSize: 20,
+                  width: 170,
+                  height: 32,
+                  fill: "#20231f",
+                })
+              }
+            >
+              {"T  Text +"}
             </button>
           </div>
         </section>

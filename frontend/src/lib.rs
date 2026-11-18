@@ -17,6 +17,7 @@ struct Editor {
     document: Document,
     selected: Option<String>,
     server: bool,
+    mockup: bool,
     busy: bool,
     fields_version: u32,
     status: String,
@@ -39,7 +40,9 @@ impl Editor {
     }
 
     fn storage_key(&self) -> &'static str {
-        if self.server {
+        if self.mockup {
+            "agent-pixel:web-app:v1"
+        } else if self.server {
             "agent-pixel:poster:v1:server"
         } else {
             "agent-pixel:poster:v1"
@@ -60,9 +63,11 @@ const TOOLS: &str = r##"[
     "inputSchema": {
       "type":"object","minProperties":1,"additionalProperties":false,
       "properties":{
-        "id":{"type":"string"},"kind":{"type":"string","enum":["rectangle","ellipse"]},
+        "id":{"type":"string"},"kind":{"type":"string","enum":["rectangle","ellipse","text"]},
         "x":{"type":"integer"},"y":{"type":"integer"},"width":{"type":"integer"},"height":{"type":"integer"},
-        "fill":{"type":"string","pattern":"^#[0-9A-Fa-f]{6}$"}
+        "fill":{"type":"string","description":"Hex fill or text color","pattern":"^#[0-9A-Fa-f]{6}$"},
+        "text":{"type":"string","minLength":1,"maxLength":512,"description":"Content for a text layer"},
+        "fontSize":{"type":"integer","minimum":8,"maximum":96}
       }
     }
   }
@@ -115,8 +120,12 @@ async fn fetch_document(body: Option<&str>) -> Result<Document, String> {
 }
 
 async fn start() -> Result<(), String> {
-    let server = browser::server_mode();
-    EDITOR.with_borrow_mut(|editor| editor.server = server);
+    let mockup = browser::workspace_query("design");
+    let server = !mockup && browser::workspace_query("server");
+    EDITOR.with_borrow_mut(|editor| {
+        editor.server = server;
+        editor.mockup = mockup;
+    });
     let key = EDITOR.with_borrow(Editor::storage_key);
     let local = browser::load_draft(key).map_err(message).and_then(|value| {
         value
@@ -133,7 +142,11 @@ async fn start() -> Result<(), String> {
             Some("Browser draft unavailable".to_string()),
         ),
     };
-    let mut design = request("read", "null").await?;
+    let mut design = if mockup {
+        restore(&Scene::blank()).await?
+    } else {
+        request("read", "null").await?
+    };
     if let Some(scene) = saved.scene {
         match restore(&scene).await {
             Ok(restored) => design = restored,
