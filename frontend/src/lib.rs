@@ -341,6 +341,34 @@ async fn commit_batch(batch: Batch, author: Author) -> Result<String, String> {
     change_design("batch", &json, author).await
 }
 
+fn edit_hierarchy(edit: Edit) {
+    let revision = EDITOR.with_borrow(|editor| editor.revision.clone());
+    js::spawn(Box::new(async move {
+        if let Err(error) = commit_batch(
+            Batch {
+                revision,
+                edits: vec![edit],
+            },
+            Author::Person,
+        )
+        .await
+        {
+            status(error);
+        }
+    }));
+}
+
+fn layer_tree() -> Result<String, String> {
+    EDITOR.with_borrow(|editor| {
+        let scene = editor
+            .document
+            .scene
+            .as_ref()
+            .ok_or("No artboard is open.")?;
+        serde_json::to_string(&scene.layer_tree()).map_err(|error| error.to_string())
+    })
+}
+
 fn add_image(file: &'static webapi::File) {
     let revision = EDITOR.with_borrow(|editor| editor.revision.clone());
     js::spawn(Box::new(async move {
@@ -600,10 +628,15 @@ async fn apply_design(command: &str, json: &str, author: Author) -> Result<Strin
     let design: Design = serde_json::from_str(&reply).map_err(|error| error.to_string())?;
     EDITOR.with_borrow_mut(|editor| {
         let selected = design.edited.or_else(|| {
-            editor
-                .selected
-                .take()
-                .filter(|id| design.scene.layers.iter().any(|layer| &layer.id == id))
+            editor.selected.take().filter(|id| {
+                design.scene.layers.iter().any(|layer| &layer.id == id)
+                    || design.scene.groups.iter().any(|group| &group.id == id)
+                    || design
+                        .scene
+                        .instances
+                        .iter()
+                        .any(|instance| &instance.id == id)
+            })
         });
         editor.select(selected);
         editor.revision = design.revision;

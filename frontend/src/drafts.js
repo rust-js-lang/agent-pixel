@@ -147,8 +147,15 @@ export function read(key) {
                   : {
                       ...find.document.scene,
                       layers: find.document.scene.layers.map((item) => ({ ...item })),
-                      instances: find.document.scene.instances.map((item) => ({ ...item })),
+                      instances: find.document.scene.instances.map((item) => ({
+                        ...item,
+                        layerIds: item.layerIds.slice(),
+                      })),
                       assets: find.document.scene.assets.slice(),
+                      groups: find.document.scene.groups.map((item) => ({
+                        ...item,
+                        children: item.children.slice(),
+                      })),
                     },
             }
           : undefined;
@@ -229,8 +236,15 @@ export function previous(key, expected) {
                   : {
                       ...record.previous.scene,
                       layers: record.previous.scene.layers.map((item) => ({ ...item })),
-                      instances: record.previous.scene.instances.map((item) => ({ ...item })),
+                      instances: record.previous.scene.instances.map((item) => ({
+                        ...item,
+                        layerIds: item.layerIds.slice(),
+                      })),
                       assets: record.previous.scene.assets.slice(),
+                      groups: record.previous.scene.groups.map((item) => ({
+                        ...item,
+                        children: item.children.slice(),
+                      })),
                     },
             };
       const result$1 =
@@ -309,8 +323,15 @@ export async function commit(key, expected, document, title, library) {
                   : {
                       ...current.document.scene,
                       layers: current.document.scene.layers.map((item) => ({ ...item })),
-                      instances: current.document.scene.instances.map((item) => ({ ...item })),
+                      instances: current.document.scene.instances.map((item) => ({
+                        ...item,
+                        layerIds: item.layerIds.slice(),
+                      })),
                       assets: current.document.scene.assets.slice(),
+                      groups: current.document.scene.groups.map((item) => ({
+                        ...item,
+                        children: item.children.slice(),
+                      })),
                     },
             },
             previous:
@@ -326,8 +347,13 @@ export async function commit(key, expected, document, title, library) {
                             layers: current.previous.scene.layers.map((item) => ({ ...item })),
                             instances: current.previous.scene.instances.map((item) => ({
                               ...item,
+                              layerIds: item.layerIds.slice(),
                             })),
                             assets: current.previous.scene.assets.slice(),
+                            groups: current.previous.scene.groups.map((item) => ({
+                              ...item,
+                              children: item.children.slice(),
+                            })),
                           },
                   },
             previousLibrary:
@@ -360,8 +386,15 @@ export async function commit(key, expected, document, title, library) {
             : {
                 ...document.scene,
                 layers: document.scene.layers.map((item) => ({ ...item })),
-                instances: document.scene.instances.map((item) => ({ ...item })),
+                instances: document.scene.instances.map((item) => ({
+                  ...item,
+                  layerIds: item.layerIds.slice(),
+                })),
                 assets: document.scene.assets.slice(),
+                groups: document.scene.groups.map((item) => ({
+                  ...item,
+                  children: item.children.slice(),
+                })),
               };
         const map =
           current !== undefined
@@ -373,8 +406,15 @@ export async function commit(key, expected, document, title, library) {
                     : {
                         ...current.document.scene,
                         layers: current.document.scene.layers.map((item) => ({ ...item })),
-                        instances: current.document.scene.instances.map((item) => ({ ...item })),
+                        instances: current.document.scene.instances.map((item) => ({
+                          ...item,
+                          layerIds: item.layerIds.slice(),
+                        })),
                         assets: current.document.scene.assets.slice(),
+                        groups: current.document.scene.groups.map((item) => ({
+                          ...item,
+                          children: item.children.slice(),
+                        })),
                       },
               }
             : undefined;
@@ -413,8 +453,15 @@ export async function commit(key, expected, document, title, library) {
             : {
                 ...document.scene,
                 layers: document.scene.layers.map((item) => ({ ...item })),
-                instances: document.scene.instances.map((item) => ({ ...item })),
+                instances: document.scene.instances.map((item) => ({
+                  ...item,
+                  layerIds: item.layerIds.slice(),
+                })),
                 assets: document.scene.assets.slice(),
+                groups: document.scene.groups.map((item) => ({
+                  ...item,
+                  children: item.children.slice(),
+                })),
               };
         next = {
           key: storageKey,

@@ -94,6 +94,14 @@ The dashboard, editor, canvas, shared artboard, journey prototype, and page shel
 
 Open **Project backup** on the dashboard to download a versioned JSON bundle or restore one as a new project. On the dashboard, agents can call `export_project` with `{ id }` and `import_project` with `{ bundle }`. Each bundle contains the saved browser artboards, prototype links, and a snapshot of the component library. Restored instances resolve against that snapshot so they keep their appearance in a fresh browser.
 
+## Canvas and layer hierarchy
+
+The canvas scrolls within the editor. The toolbar and side panels stay in place, and long panels scroll independently. On phones the Layers panel and inspector sit above and below the canvas.
+
+Enter a name and use **+ Group** in the Layers panel. Select a layer, linked component, or group and change its **Parent group** in the inspector. Use the disclosure arrow to expand or collapse children. **Ungroup** lifts the children into the group's parent and preserves them.
+
+Agents can call `read_layer_tree` to discover ordered nodes and stable IDs. Use `create_group`, `set_layer_parent`, `rename_group`, and `ungroup` inside `apply_edits`. To move a node to the top level, set `parentId` to `null`. Hierarchy edits are saved, reversible, and included in project bundles.
+
 ## Edit in transactions
 
 Use **Undo**, **Redo**, and **Delete layer** in the editor. Deleting a linked component layer removes the whole instance. The inspector labels the last committed change as yours or the agent's.

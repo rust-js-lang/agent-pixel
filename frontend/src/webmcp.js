@@ -14,6 +14,7 @@ import {
   changeVariant,
   editDesign,
   exportUnsaved,
+  layerTree,
   placeComponent,
   readDesign,
   recoverPrevious,
@@ -102,6 +103,18 @@ const BATCH_SCHEMA = `{
             {"type":"object","required":["op","placement"],"additionalProperties":false,"properties":{"op":{"const":"place_image"},"placement":{"type":"object","required":["image","x","y","width","height"],"additionalProperties":false,"properties":{"image":{"type":"object","required":["name","dataUrl"],"additionalProperties":false,"properties":{"name":{"type":"string"},"dataUrl":{"type":"string","description":"Base64 PNG, JPEG or WebP data URL, at most 512 KiB decoded"}}},"x":{"type":"integer"},"y":{"type":"integer"},"width":{"type":"integer"},"height":{"type":"integer"}}}}},
             {"type":"object","required":["op","id"],"additionalProperties":false,"properties":{
                 "op":{"const":"delete"},"id":{"type":"string"}
+            }},
+            {"type":"object","required":["op","name"],"additionalProperties":false,"properties":{
+                "op":{"const":"create_group"},"name":{"type":"string","minLength":1,"maxLength":80},"parentId":{"type":["string","null"]}
+            }},
+            {"type":"object","required":["op","id","parentId"],"additionalProperties":false,"properties":{
+                "op":{"const":"set_layer_parent"},"id":{"type":"string"},"parentId":{"type":["string","null"],"description":"Group ID, or null to move to the top level"}
+            }},
+            {"type":"object","required":["op","id","name"],"additionalProperties":false,"properties":{
+                "op":{"const":"rename_group"},"id":{"type":"string"},"name":{"type":"string","minLength":1,"maxLength":80}
+            }},
+            {"type":"object","required":["op","id"],"additionalProperties":false,"properties":{
+                "op":{"const":"ungroup"},"id":{"type":"string"}
             }}
         ]}}
     }
@@ -200,7 +213,7 @@ export async function registerEditorTools() {
     {
       name: "apply_edits",
       description:
-        "Apply up to 100 layer patches, image placements or deletions atomically at the expected design revision. The batch is one undo step.",
+        "Apply up to 100 layer patches, image placements, hierarchy changes or deletions atomically at the expected design revision. The batch is one undo step.",
       inputSchema: parse(BATCH_SCHEMA),
       async execute(input) {
         const value = decode(
@@ -271,6 +284,14 @@ export async function registerEditorTools() {
             : { TAG: "Err", _0: value._0 };
         return toolResult(result);
       },
+    },
+    {
+      name: "read_layer_tree",
+      description:
+        "Read the ordered layer tree with stable IDs and nested group or linked instance children. Use those IDs in apply_edits to organize layers.",
+      inputSchema: parse(READ_SCHEMA),
+      annotations: { readOnlyHint: true },
+      execute: async () => toolResult(layerTree()),
     },
     {
       name: "read_design",

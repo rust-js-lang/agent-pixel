@@ -96,6 +96,18 @@ const BATCH_SCHEMA: &str = r#"{
             {"type":"object","required":["op","placement"],"additionalProperties":false,"properties":{"op":{"const":"place_image"},"placement":{"type":"object","required":["image","x","y","width","height"],"additionalProperties":false,"properties":{"image":{"type":"object","required":["name","dataUrl"],"additionalProperties":false,"properties":{"name":{"type":"string"},"dataUrl":{"type":"string","description":"Base64 PNG, JPEG or WebP data URL, at most 512 KiB decoded"}}},"x":{"type":"integer"},"y":{"type":"integer"},"width":{"type":"integer"},"height":{"type":"integer"}}}}},
             {"type":"object","required":["op","id"],"additionalProperties":false,"properties":{
                 "op":{"const":"delete"},"id":{"type":"string"}
+            }},
+            {"type":"object","required":["op","name"],"additionalProperties":false,"properties":{
+                "op":{"const":"create_group"},"name":{"type":"string","minLength":1,"maxLength":80},"parentId":{"type":["string","null"]}
+            }},
+            {"type":"object","required":["op","id","parentId"],"additionalProperties":false,"properties":{
+                "op":{"const":"set_layer_parent"},"id":{"type":"string"},"parentId":{"type":["string","null"],"description":"Group ID, or null to move to the top level"}
+            }},
+            {"type":"object","required":["op","id","name"],"additionalProperties":false,"properties":{
+                "op":{"const":"rename_group"},"id":{"type":"string"},"name":{"type":"string","minLength":1,"maxLength":80}
+            }},
+            {"type":"object","required":["op","id"],"additionalProperties":false,"properties":{
+                "op":{"const":"ungroup"},"id":{"type":"string"}
             }}
         ]}}
     }
@@ -174,7 +186,7 @@ pub async fn register_editor_tools() -> Result<bool, &'static JsError> {
         history_tool("redo_edit", "Redo the next transaction in this editor session.", "redo"),
         Tool {
             name: "apply_edits",
-            description: "Apply up to 100 layer patches, image placements or deletions atomically at the expected design revision. The batch is one undo step.",
+            description: "Apply up to 100 layer patches, image placements, hierarchy changes or deletions atomically at the expected design revision. The batch is one undo step.",
             annotations: None,
             input_schema: parse(BATCH_SCHEMA),
             execute: Box::new(|input| js::promise(async move {
@@ -219,6 +231,13 @@ pub async fn register_editor_tools() -> Result<bool, &'static JsError> {
                 };
                 tool_result(result)
             })),
+        },
+        Tool {
+            name: "read_layer_tree",
+            description: "Read the ordered layer tree with stable IDs and nested group or linked instance children. Use those IDs in apply_edits to organize layers.",
+            input_schema: parse(READ_SCHEMA),
+            annotations: Some(Annotations { read_only_hint: true }),
+            execute: Box::new(|_| js::promise(async { tool_result(crate::layer_tree()) })),
         },
         Tool {
             name: "read_design",

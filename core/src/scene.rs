@@ -2,6 +2,7 @@ use crate::{
     BOARD_HEIGHT, BOARD_WIDTH,
     assets::{ImageAsset, ImagePlacement, MAX_SCENE_IMAGE_BYTES},
     fits_board,
+    hierarchy::LayerGroup,
 };
 use serde::{Deserialize, Serialize};
 
@@ -36,6 +37,8 @@ pub struct Scene {
     pub instances: Vec<ComponentInstance>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub assets: Vec<ImageAsset>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub groups: Vec<LayerGroup>,
 }
 
 #[derive(Clone, Default, PartialEq, Deserialize, Serialize)]
@@ -136,7 +139,7 @@ fn placed_layers(
         .collect())
 }
 
-fn valid_id(id: &str) -> bool {
+pub(crate) fn valid_id(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= 64
         && id
@@ -145,6 +148,17 @@ fn valid_id(id: &str) -> bool {
 }
 
 impl Layer {
+    pub fn name(&self) -> String {
+        if let Some(text) = &self.text {
+            text.clone()
+        } else if self.id.len() == 36 || self.id.as_bytes().get(36) == Some(&b'-') {
+            let prefix: String = self.id.chars().take(4).collect();
+            format!("{} {}", self.kind, prefix)
+        } else {
+            self.id.replace('-', " ")
+        }
+    }
+
     fn orbit(id: &str, x: i32, y: i32, size: i32, fill: &str) -> Self {
         Self {
             id: id.into(),
@@ -203,6 +217,7 @@ impl Scene {
             layers: Vec::new(),
             instances: Vec::new(),
             assets: Vec::new(),
+            groups: Vec::new(),
         }
     }
 
@@ -220,11 +235,12 @@ impl Scene {
             ],
             instances: Vec::new(),
             assets: Vec::new(),
+            groups: Vec::new(),
         }
     }
 
     pub fn validate(&self) -> Result<(), &'static str> {
-        if self.version != VERSION || self.layers.len() > MAX_LAYERS {
+        if self.version != VERSION || self.layers.len() + self.groups.len() > MAX_LAYERS {
             return Err("Unsupported document.");
         }
         let mut assets = std::collections::HashSet::new();
@@ -266,7 +282,7 @@ impl Scene {
                 return Err("Invalid component instance.");
             }
         }
-        Ok(())
+        self.validate_hierarchy()
     }
 
     pub fn image_for_layer(&self, layer: &Layer) -> Option<&ImageAsset> {
@@ -300,7 +316,7 @@ impl Scene {
         placement: ImagePlacement,
         id: String,
     ) -> Result<String, &'static str> {
-        if self.layers.len() >= MAX_LAYERS {
+        if self.layers.len() + self.groups.len() >= MAX_LAYERS {
             return Err("Layer limit reached.");
         }
         placement.image.validate()?;
@@ -437,12 +453,11 @@ impl Scene {
     }
 
     fn delete_layer(&mut self, id: &str) -> Result<(), &'static str> {
-        if let Some(index) = self
-            .instances
-            .iter()
-            .position(|instance| instance.layer_ids.iter().any(|layer| layer == id))
-        {
+        if let Some(index) = self.instances.iter().position(|instance| {
+            instance.id == id || instance.layer_ids.iter().any(|layer| layer == id)
+        }) {
             let instance = self.instances.remove(index);
+            self.detach_from_group(&instance.id);
             self.layers
                 .retain(|layer| !instance.layer_ids.contains(&layer.id));
         } else {
@@ -452,6 +467,7 @@ impl Scene {
                 .position(|layer| layer.id == id)
                 .ok_or("Unknown layer.")?;
             self.layers.remove(index);
+            self.detach_from_group(id);
         }
         self.prune_assets();
         Ok(())
@@ -493,7 +509,9 @@ impl Scene {
                     .position(|layer| layer.id == id)
                     .ok_or("Unknown layer.")?,
             ),
-            None if self.layers.len() >= MAX_LAYERS => return Err("Layer limit reached."),
+            None if self.layers.len() + self.groups.len() >= MAX_LAYERS => {
+                return Err("Layer limit reached.");
+            }
             None => None,
         };
         let mut layer = match index {
@@ -588,9 +606,32 @@ pub struct Batch {
 #[derive(Deserialize, Serialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Edit {
-    Patch { layer: Patch },
-    Delete { id: String },
-    PlaceImage { placement: ImagePlacement },
+    Patch {
+        layer: Patch,
+    },
+    Delete {
+        id: String,
+    },
+    PlaceImage {
+        placement: ImagePlacement,
+    },
+    CreateGroup {
+        name: String,
+        #[serde(rename = "parentId")]
+        parent_id: Option<String>,
+    },
+    SetLayerParent {
+        id: String,
+        #[serde(rename = "parentId")]
+        parent_id: Option<String>,
+    },
+    RenameGroup {
+        id: String,
+        name: String,
+    },
+    Ungroup {
+        id: String,
+    },
 }
 
 #[derive(Serialize, Deserialize)]
@@ -692,11 +733,30 @@ impl Session {
                 Edit::PlaceImage { placement } => {
                     Some(candidate.place_image(placement, format!("{id}-{index}"))?)
                 }
+                Edit::CreateGroup { name, parent_id } => {
+                    Some(candidate.create_group(format!("{id}-{index}"), name, parent_id)?)
+                }
+                Edit::SetLayerParent { id, parent_id } => {
+                    candidate.move_layer_node(&id, parent_id.as_deref())?;
+                    Some(id)
+                }
+                Edit::RenameGroup { id, name } => {
+                    candidate.rename_group(&id, name)?;
+                    Some(id)
+                }
+                Edit::Ungroup { id } => {
+                    candidate.ungroup(&id)?;
+                    None
+                }
                 Edit::Delete { id } => {
                     candidate.delete_layer(&id)?;
                     None
                 }
             };
+        }
+        if !candidate.groups.is_empty() || !self.scene.groups.is_empty() {
+            candidate.validate()?;
+            candidate.normalize_layer_order();
         }
         self.commit(candidate, id, "Edit layers", author);
         Ok(selected)
@@ -713,9 +773,10 @@ impl Session {
         let edited = match command {
             "read" => None,
             "restore" => {
-                let restored: Scene =
+                let mut restored: Scene =
                     serde_json::from_str(input).map_err(|_| "Unsupported document.")?;
                 restored.validate()?;
+                restored.normalize_layer_order();
                 *self = Self::new(restored);
                 self.revision = id;
                 None

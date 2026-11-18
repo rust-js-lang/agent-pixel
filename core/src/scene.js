@@ -8,6 +8,11 @@ import {
   imagePlacementDeserialize_deserialize,
   imagePlacementSerialize_serialize,
 } from "./assets.js";
+import {
+  Scene as Scene$1,
+  layerGroupDeserialize_deserialize,
+  layerGroupSerialize_serialize,
+} from "./hierarchy.js";
 import { BOARD_HEIGHT, BOARD_WIDTH, fitsBoard } from "./lib.js";
 import {
   $add,
@@ -21,6 +26,7 @@ import {
   $index,
   $json,
   $min,
+  $next,
   $position,
   $removeOutOfBounds,
   $retain,
@@ -107,8 +113,15 @@ export function sceneDeserialize_deserialize(json) {
       ["layers", $json.vec(layerDeserialize_deserialize)],
       ["instances", $json.vec(componentInstanceDeserialize_deserialize), () => []],
       ["assets", $json.vec(imageAssetDeserialize_deserialize), () => []],
+      ["groups", $json.vec(layerGroupDeserialize_deserialize), () => []],
     ],
-    ([version, layers, instances, assets]) => ({ version, layers, instances, assets }),
+    ([version, layers, instances, assets, groups]) => ({
+      version,
+      layers,
+      instances,
+      assets,
+      groups,
+    }),
   );
 }
 
@@ -138,6 +151,15 @@ export function sceneSerialize_serialize(scene, json) {
     for (const item of scene.assets) {
       json.element();
       imageAssetSerialize_serialize(item, json);
+    }
+    json.endArray();
+  }
+  if (scene.groups.length !== 0) {
+    json.key("groups");
+    json.beginArray();
+    for (const item of scene.groups) {
+      json.element();
+      layerGroupSerialize_serialize(item, json);
     }
     json.endArray();
   }
@@ -416,7 +438,7 @@ function placedLayers(variant, id, x, y, fit) {
   };
 }
 
-function validId(id) {
+export function validId(id) {
   return (
     id !== "" &&
     $byteLen(id) <= 64 &&
@@ -424,7 +446,18 @@ function validId(id) {
   );
 }
 
-const Layer = {
+export const Layer = {
+  name(layer) {
+    if (layer.text != null) {
+      return layer.text;
+    } else if ($byteLen(layer.id) === 36 || $utf8Bytes(layer.id)[36] === 45) {
+      const prefix = Array.from(layer.id[Symbol.iterator]().take(4)).join("");
+      return `${layer.kind} ${prefix}`;
+    } else {
+      return layer.id.replaceAll("-", " ");
+    }
+  },
+
   orbit(id, x, y, size, fill) {
     return {
       id,
@@ -489,6 +522,7 @@ export const Scene = {
       layers: [],
       instances: [],
       assets: [],
+      groups: [],
     };
   },
 
@@ -506,11 +540,12 @@ export const Scene = {
       ],
       instances: [],
       assets: [],
+      groups: [],
     };
   },
 
   validate(scene) {
-    if (scene.version !== VERSION || scene.layers.length > MAX_LAYERS) {
+    if (scene.version !== VERSION || scene.layers.length + scene.groups.length > MAX_LAYERS) {
       return { TAG: "Err", _0: "Unsupported document." };
     }
     const assets = new Set();
@@ -552,7 +587,7 @@ export const Scene = {
         return { TAG: "Err", _0: "Invalid component instance." };
       }
     }
-    return { TAG: "Ok" };
+    return Scene$1.validateHierarchy(scene);
   },
 
   imageForLayer(scene, layer) {
@@ -583,7 +618,7 @@ export const Scene = {
   },
 
   placeImage(scene, placement, id) {
-    if (scene.layers.length >= MAX_LAYERS) {
+    if (scene.layers.length + scene.groups.length >= MAX_LAYERS) {
       return { TAG: "Err", _0: "Layer limit reached." };
     }
     const result = RasterImage.validate(placement.image);
@@ -635,8 +670,9 @@ export const Scene = {
     const candidate = {
       ...scene,
       layers: scene.layers.map((item) => ({ ...item })),
-      instances: scene.instances.map((item) => ({ ...item })),
+      instances: scene.instances.map((item) => ({ ...item, layerIds: item.layerIds.slice() })),
       assets: scene.assets.slice(),
+      groups: scene.groups.map((item) => ({ ...item, children: item.children.slice() })),
     };
     const result$1 = candidate.layers;
     for (let i = 0; i < layers.length; i++) {
@@ -652,7 +688,7 @@ export const Scene = {
       family: insert.variant.family,
       x: insert.x,
       y: insert.y,
-      layerIds: ids,
+      layerIds: ids.slice(),
     });
     const result$3 = Scene.validate(candidate);
     if (result$3.TAG === "Err") {
@@ -707,8 +743,9 @@ export const Scene = {
     const candidate = {
       ...scene,
       layers: scene.layers.map((item) => ({ ...item })),
-      instances: scene.instances.map((item) => ({ ...item })),
+      instances: scene.instances.map((item) => ({ ...item, layerIds: item.layerIds.slice() })),
       assets: scene.assets.slice(),
+      groups: scene.groups.map((item) => ({ ...item, children: item.children.slice() })),
     };
     const result$1 = Scene.replaceInstance(candidate, index, switch$.variant, false);
     if (result$1.TAG === "Err") {
@@ -727,8 +764,9 @@ export const Scene = {
     const candidate = {
       ...scene,
       layers: scene.layers.map((item) => ({ ...item })),
-      instances: scene.instances.map((item) => ({ ...item })),
+      instances: scene.instances.map((item) => ({ ...item, layerIds: item.layerIds.slice() })),
       assets: scene.assets.slice(),
+      groups: scene.groups.map((item) => ({ ...item, children: item.children.slice() })),
     };
     const end = candidate.instances.length;
     for (let index = 0; index < end; index++) {
@@ -751,13 +789,16 @@ export const Scene = {
   },
 
   deleteLayer(scene, id) {
-    const index = scene.instances.findIndex((instance) => instance.layerIds.includes(id));
+    const index = scene.instances.findIndex(
+      (instance) => instance.id === id || instance.layerIds.includes(id),
+    );
     if (index !== -1) {
       const result = scene.instances;
       if (index >= result.length) {
         $removeOutOfBounds(result, index);
       }
       const instance = result.splice(index, 1)[0];
+      Scene$1.detachFromGroup(scene, instance.id);
       $retain(scene.layers, (layer) => !instance.layerIds.includes(layer.id));
     } else {
       const position = $position(scene.layers, (layer) => layer.id === id);
@@ -772,6 +813,7 @@ export const Scene = {
         $removeOutOfBounds(result$1, index);
       }
       result$1.splice(index, 1);
+      Scene$1.detachFromGroup(scene, id);
     }
     Scene.pruneAssets(scene);
     return { TAG: "Ok" };
@@ -806,7 +848,7 @@ export const Scene = {
         return result;
       }
       index = result._0;
-    } else if (scene.layers.length >= MAX_LAYERS) {
+    } else if (scene.layers.length + scene.groups.length >= MAX_LAYERS) {
       return { TAG: "Err", _0: "Layer limit reached." };
     } else {
       index = undefined;
@@ -963,7 +1005,15 @@ export function editDeserialize_deserialize(json) {
   return json.internallyTagged(
     "op",
     "internally tagged enum Edit",
-    ["patch", "delete", "place_image"],
+    [
+      "patch",
+      "delete",
+      "place_image",
+      "create_group",
+      "set_layer_parent",
+      "rename_group",
+      "ungroup",
+    ],
     (variant, content) => {
       if (variant === "patch") {
         return content.struct(
@@ -981,10 +1031,51 @@ export function editDeserialize_deserialize(json) {
           { deny: true },
         );
       }
+      if (variant === "place_image") {
+        return content.struct(
+          "struct variant Edit::PlaceImage",
+          [["placement", imagePlacementDeserialize_deserialize]],
+          ([placement]) => ({ TAG: "PlaceImage", placement }),
+          { deny: true },
+        );
+      }
+      if (variant === "create_group") {
+        return content.struct(
+          "struct variant Edit::CreateGroup",
+          [
+            ["name", $json.string],
+            ["parentId", $json.option($json.string)],
+          ],
+          ([name, parentId]) => ({ TAG: "CreateGroup", name, parentId }),
+          { deny: true },
+        );
+      }
+      if (variant === "set_layer_parent") {
+        return content.struct(
+          "struct variant Edit::SetLayerParent",
+          [
+            ["id", $json.string],
+            ["parentId", $json.option($json.string)],
+          ],
+          ([id, parentId]) => ({ TAG: "SetLayerParent", id, parentId }),
+          { deny: true },
+        );
+      }
+      if (variant === "rename_group") {
+        return content.struct(
+          "struct variant Edit::RenameGroup",
+          [
+            ["id", $json.string],
+            ["name", $json.string],
+          ],
+          ([id, name]) => ({ TAG: "RenameGroup", id, name }),
+          { deny: true },
+        );
+      }
       return content.struct(
-        "struct variant Edit::PlaceImage",
-        [["placement", imagePlacementDeserialize_deserialize]],
-        ([placement]) => ({ TAG: "PlaceImage", placement }),
+        "struct variant Edit::Ungroup",
+        [["id", $json.string]],
+        ([id]) => ({ TAG: "Ungroup", id }),
         { deny: true },
       );
     },
@@ -1006,12 +1097,54 @@ export function editSerialize_serialize(edit, json) {
     json.key("id");
     json.string(edit.id);
     json.endObject();
-  } else {
+  } else if (edit.TAG === "PlaceImage") {
     json.beginObject();
     json.key("op");
     json.string("place_image");
     json.key("placement");
     imagePlacementSerialize_serialize(edit.placement, json);
+    json.endObject();
+  } else if (edit.TAG === "CreateGroup") {
+    json.beginObject();
+    json.key("op");
+    json.string("create_group");
+    json.key("name");
+    json.string(edit.name);
+    json.key("parentId");
+    if (edit.parentId == null) {
+      json.null();
+    } else {
+      json.string(edit.parentId);
+    }
+    json.endObject();
+  } else if (edit.TAG === "SetLayerParent") {
+    json.beginObject();
+    json.key("op");
+    json.string("set_layer_parent");
+    json.key("id");
+    json.string(edit.id);
+    json.key("parentId");
+    if (edit.parentId == null) {
+      json.null();
+    } else {
+      json.string(edit.parentId);
+    }
+    json.endObject();
+  } else if (edit.TAG === "RenameGroup") {
+    json.beginObject();
+    json.key("op");
+    json.string("rename_group");
+    json.key("id");
+    json.string(edit.id);
+    json.key("name");
+    json.string(edit.name);
+    json.endObject();
+  } else {
+    json.beginObject();
+    json.key("op");
+    json.string("ungroup");
+    json.key("id");
+    json.string(edit.id);
     json.endObject();
   }
 }
@@ -1147,8 +1280,15 @@ export const Session = {
     const candidate = {
       ...transaction.scene,
       layers: transaction.scene.layers.map((item) => ({ ...item })),
-      instances: transaction.scene.instances.map((item) => ({ ...item })),
+      instances: transaction.scene.instances.map((item) => ({
+        ...item,
+        layerIds: item.layerIds.slice(),
+      })),
       assets: transaction.scene.assets.slice(),
+      groups: transaction.scene.groups.map((item) => ({
+        ...item,
+        children: item.children.slice(),
+      })),
     };
     if (candidate.instances.length !== 0) {
       const result = Scene.refreshComponents(candidate, session.library);
@@ -1178,29 +1318,72 @@ export const Session = {
     const candidate = {
       ...session.scene,
       layers: session.scene.layers.map((item) => ({ ...item })),
-      instances: session.scene.instances.map((item) => ({ ...item })),
+      instances: session.scene.instances.map((item) => ({
+        ...item,
+        layerIds: item.layerIds.slice(),
+      })),
       assets: session.scene.assets.slice(),
+      groups: session.scene.groups.map((item) => ({ ...item, children: item.children.slice() })),
     };
     let selected;
-    for (const [index, edit] of batch.edits.entries()) {
-      if (edit.TAG === "Patch") {
-        const result = Scene.edit(candidate, edit.layer, `${id}-${index}`);
-        if (result.TAG === "Err") {
-          return result;
+    const iter = batch.edits.entries();
+    while (true) {
+      const value = $next(iter);
+      if (value != null) {
+        const index = value[0];
+        const edit = value[1];
+        if (edit.TAG === "Patch") {
+          const result = Scene.edit(candidate, edit.layer, `${id}-${index}`);
+          if (result.TAG === "Err") {
+            return result;
+          }
+          selected = result._0;
+        } else if (edit.TAG === "PlaceImage") {
+          const result = Scene.placeImage(candidate, edit.placement, `${id}-${index}`);
+          if (result.TAG === "Err") {
+            return result;
+          }
+          selected = result._0;
+        } else if (edit.TAG === "CreateGroup") {
+          const result = Scene$1.createGroup(candidate, `${id}-${index}`, edit.name, edit.parentId);
+          if (result.TAG === "Err") {
+            return result;
+          }
+          selected = result._0;
+        } else if (edit.TAG === "SetLayerParent") {
+          const result = Scene$1.moveLayerNode(candidate, edit.id, edit.parentId);
+          if (result.TAG === "Err") {
+            return result;
+          }
+          selected = edit.id;
+        } else if (edit.TAG === "RenameGroup") {
+          const result = Scene$1.renameGroup(candidate, edit.id, edit.name);
+          if (result.TAG === "Err") {
+            return result;
+          }
+          selected = edit.id;
+        } else if (edit.TAG === "Ungroup") {
+          const result = Scene$1.ungroup(candidate, edit.id);
+          if (result.TAG === "Err") {
+            return result;
+          }
+          selected = undefined;
+        } else {
+          const result = Scene.deleteLayer(candidate, edit.id);
+          if (result.TAG === "Err") {
+            return result;
+          }
+          selected = undefined;
         }
-        selected = result._0;
-      } else if (edit.TAG === "PlaceImage") {
-        const result = Scene.placeImage(candidate, edit.placement, `${id}-${index}`);
-        if (result.TAG === "Err") {
-          return result;
-        }
-        selected = result._0;
       } else {
-        const result = Scene.deleteLayer(candidate, edit.id);
-        if (result.TAG === "Err") {
-          return result;
+        if (candidate.groups.length !== 0 || session.scene.groups.length !== 0) {
+          const result = Scene.validate(candidate);
+          if (result.TAG === "Err") {
+            return result;
+          }
+          Scene$1.normalizeLayerOrder(candidate);
         }
-        selected = undefined;
+        break;
       }
     }
     Session.commit(session, candidate, id, "Edit layers", author);
@@ -1226,6 +1409,7 @@ export const Session = {
         if (result$2.TAG === "Err") {
           return result$2;
         }
+        Scene$1.normalizeLayerOrder(restored);
         $assign(session, Session.new(restored));
         session.revision = id;
         edited = undefined;
@@ -1281,8 +1465,15 @@ export const Session = {
         const candidate = {
           ...session.scene,
           layers: session.scene.layers.map((item) => ({ ...item })),
-          instances: session.scene.instances.map((item) => ({ ...item })),
+          instances: session.scene.instances.map((item) => ({
+            ...item,
+            layerIds: item.layerIds.slice(),
+          })),
           assets: session.scene.assets.slice(),
+          groups: session.scene.groups.map((item) => ({
+            ...item,
+            children: item.children.slice(),
+          })),
         };
         const result$2 = Scene.edit(candidate, patch, id);
         if (result$2.TAG === "Err") {
@@ -1304,8 +1495,15 @@ export const Session = {
         const candidate = {
           ...session.scene,
           layers: session.scene.layers.map((item) => ({ ...item })),
-          instances: session.scene.instances.map((item) => ({ ...item })),
+          instances: session.scene.instances.map((item) => ({
+            ...item,
+            layerIds: item.layerIds.slice(),
+          })),
           assets: session.scene.assets.slice(),
+          groups: session.scene.groups.map((item) => ({
+            ...item,
+            children: item.children.slice(),
+          })),
         };
         const result$2 = Scene.insertComponent(candidate, component, id);
         if (result$2.TAG === "Err") {
@@ -1329,8 +1527,15 @@ export const Session = {
         const candidate = {
           ...session.scene,
           layers: session.scene.layers.map((item) => ({ ...item })),
-          instances: session.scene.instances.map((item) => ({ ...item })),
+          instances: session.scene.instances.map((item) => ({
+            ...item,
+            layerIds: item.layerIds.slice(),
+          })),
           assets: session.scene.assets.slice(),
+          groups: session.scene.groups.map((item) => ({
+            ...item,
+            children: item.children.slice(),
+          })),
         };
         const result$2 = Scene.switchComponent(candidate, switch$);
         if (result$2.TAG === "Err") {
@@ -1352,8 +1557,15 @@ export const Session = {
         const candidate = {
           ...session.scene,
           layers: session.scene.layers.map((item) => ({ ...item })),
-          instances: session.scene.instances.map((item) => ({ ...item })),
+          instances: session.scene.instances.map((item) => ({
+            ...item,
+            layerIds: item.layerIds.slice(),
+          })),
           assets: session.scene.assets.slice(),
+          groups: session.scene.groups.map((item) => ({
+            ...item,
+            children: item.children.slice(),
+          })),
         };
         const result$2 = Scene.refreshComponents(candidate, variants);
         if (result$2.TAG === "Err") {
@@ -1372,12 +1584,19 @@ export const Session = {
     }
     const props = { ...session.scene };
     const layers = session.scene.layers.map((item) => ({ ...item }));
-    const instances = session.scene.instances.map((item) => ({ ...item }));
+    const instances = session.scene.instances.map((item) => ({
+      ...item,
+      layerIds: item.layerIds.slice(),
+    }));
     const assets = session.scene.assets.slice();
+    const groups = session.scene.groups.map((item) => ({
+      ...item,
+      children: item.children.slice(),
+    }));
     const value = session.revision;
     const collect = session.undo.map((entry) => entry.entry);
     const design = {
-      scene: { ...props, layers, instances, assets },
+      scene: { ...props, layers, instances, assets, groups },
       board: {
         width: BOARD_WIDTH,
         height: BOARD_HEIGHT,

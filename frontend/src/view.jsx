@@ -7,6 +7,7 @@ import {
   changeVariant,
   deleteSelection,
   edit,
+  editHierarchy,
   editor as editor$1,
   historyAction,
   placeComponent,
@@ -24,24 +25,24 @@ import JOURNEY from "./journey.module.css";
 import SHELL from "./shell.module.css";
 
 import { BOARD_HEIGHT, BOARD_WIDTH } from "../../core/src/lib.js";
-import { Scene } from "../../core/src/scene.js";
+import { useState } from "react";
+import { Scene } from "../../core/src/hierarchy.js";
+import { Layer, Scene as Scene$1 } from "../../core/src/scene.js";
 import * as Backup from "./backup.js";
 import * as Components from "./components.js";
 import * as Drafts from "./drafts.js";
 import { Project } from "./projects.js";
 import {
   $borrowMut,
-  $byteLen,
   $cellReplace,
   $clamp,
   $displayF64,
   $f64ToInt,
   $parseInt,
   $round,
-  $strSlice,
   $toFixed,
+  $trim,
   $unwrap,
-  $utf8Bytes,
   $withBorrow,
   $withBorrowMut,
 } from "@rust-js/std";
@@ -77,16 +78,6 @@ const Drag = {
 
 function percent(value, extent) {
   return `${$displayF64((value / extent) * 100)}%`;
-}
-
-function label(layer) {
-  if (layer.text != null) {
-    return layer.text;
-  } else if ($byteLen(layer.id) === 36 || $utf8Bytes(layer.id)[36] === 45) {
-    return `${layer.kind} ${$strSlice(layer.id, 0, 4)}`;
-  } else {
-    return layer.id.replaceAll("-", " ");
-  }
 }
 
 function beginDrag(layer, event) {
@@ -200,7 +191,7 @@ function shape(layer, linked, image) {
       key={layer.id}
       className={class$}
       style={styles}
-      aria-label={`Select ${image != null ? image.image.name : label(layer)}`}
+      aria-label={`Select ${image != null ? image.image.name : Layer.name(layer)}`}
       onClick={() => select(id)}
       onPointerDown={(event) => {
         if (!linked) {
@@ -216,19 +207,166 @@ function shape(layer, linked, image) {
   );
 }
 
-function layerButton(layer, selected) {
-  const id = layer.id;
-  const swatch = { background: layer.fill, borderRadius: layer.kind === "ellipse" ? "50%" : "0" };
+function LayerRow({ node, selected }) {
+  const [expanded, setExpanded] = useState(true);
+  const container = node.kind === "group" || node.kind === "instance";
+  const id = node.id;
+  const name = node.name;
+  let icon;
+  switch (node.kind) {
+    case "group":
+      icon = "▱";
+      break;
+    case "instance":
+      icon = "◇";
+      break;
+    case "text":
+      icon = "T";
+      break;
+    case "image":
+      icon = "▧";
+      break;
+    case "ellipse":
+      icon = "○";
+      break;
+    default:
+      icon = "□";
+      break;
+  }
+  const children = node.children.map((child) => (
+    <LayerRow key={child.id} node={child} selected={selected} />
+  ));
+  let ariaLabel;
+  let children$1;
+  if (container) {
+    ariaLabel = `${expanded ? "Collapse" : "Expand"} ${name}`;
+    children$1 = expanded ? "▾" : "▸";
+  }
   return (
-    <button
-      key={layer.id}
-      className={EDITOR_STYLES.layer}
-      aria-pressed={selected === layer.id}
-      onClick={() => select(id)}
-    >
-      <i style={swatch} />
-      {label(layer)}
-    </button>
+    <li id={`tree-${node.id}`}>
+      <div>
+        {container && (
+          <button
+            type="button"
+            aria-label={ariaLabel}
+            aria-expanded={expanded}
+            onClick={() => setExpanded(!expanded)}
+          >
+            {children$1}
+          </button>
+        )}
+        <button
+          type="button"
+          className={EDITOR_STYLES.layer}
+          aria-pressed={selected === node.id}
+          title={name}
+          onClick={() => select(id)}
+        >
+          <span aria-hidden="true">{icon}</span>
+          {name}
+        </button>
+      </div>
+      {expanded && children.length !== 0 && <ul>{children}</ul>}
+    </li>
+  );
+}
+
+function layerPanel(scene, selected, disabled) {
+  const rows = (scene != null ? Scene.layerTree(scene) : undefined) ?? [];
+  const nodes = rows.map((node) => <LayerRow key={node.id} node={node} selected={selected} />);
+  return (
+    <div id="layers" className={EDITOR_STYLES.layers}>
+      <form
+        aria-label="New layer group"
+        action={(data) => {
+          const name = data.get("group-name");
+          if (typeof name === "string") {
+            editHierarchy({ TAG: "CreateGroup", name: $trim(name) });
+          }
+        }}
+      >
+        <input
+          name="group-name"
+          aria-label="New group name"
+          placeholder="Group name"
+          required
+          maxLength={80}
+          disabled={disabled}
+        />
+        <button type="submit" disabled={disabled} aria-label="Add layer group">
+          + Group
+        </button>
+      </form>
+      <ul aria-label="Layer hierarchy">{nodes}</ul>
+    </div>
+  );
+}
+
+function parentPicker(scene, id, disabled) {
+  const value = Scene.parentGroup(scene, id) ?? "";
+  const options = scene.groups
+    .filter((group) => Scene.isValidParent(scene, id, group.id))
+    .map((group) => (
+      <option key={group.id} value={group.id}>
+        {group.name}
+      </option>
+    ));
+  return (
+    <label>
+      Parent group
+      <select
+        value={value}
+        disabled={disabled}
+        onChange={(event) => {
+          const value = event.currentTarget.value;
+          editHierarchy({ TAG: "SetLayerParent", id, parentId: value || undefined });
+        }}
+      >
+        <option value="">Top level</option>
+        {options}
+      </select>
+    </label>
+  );
+}
+
+function groupInspector(group, disabled) {
+  const id = group.id;
+  const renameId = id;
+  return (
+    <>
+      <h2>{group.name}</h2>
+      <form
+        key={`${group.id}-${group.name}`}
+        aria-label="Rename group"
+        action={(data) => {
+          const name = data.get("group-name");
+          if (typeof name === "string") {
+            editHierarchy({ TAG: "RenameGroup", id: renameId, name: $trim(name) });
+          }
+        }}
+      >
+        <input
+          name="group-name"
+          aria-label="Group name"
+          defaultValue={group.name}
+          required
+          maxLength={80}
+          disabled={disabled}
+        />
+        <button type="submit" disabled={disabled}>
+          Rename
+        </button>
+      </form>
+      <p>
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => editHierarchy({ TAG: "Ungroup", id })}
+        >
+          Ungroup
+        </button>
+      </p>
+    </>
   );
 }
 
@@ -326,7 +464,7 @@ function inspector(layer, version, image) {
     ) : undefined;
   return (
     <>
-      <h2 id="name">{label(layer)}</h2>
+      <h2 id="name">{Layer.name(layer)}</h2>
       <hr />
       <h3>Geometry</h3>
       <form id="fields" onSubmit={(event) => event.preventDefault()}>
@@ -503,7 +641,7 @@ export function prototype(editor) {
   const screen = $unwrap(editor.screen, "Prototype screen");
   const scene = editor.document.scene;
   const map = (scene) =>
-    scene.layers.map((layer) => previewLayer(layer, Scene.imageForLayer(scene, layer)));
+    scene.layers.map((layer) => previewLayer(layer, Scene$1.imageForLayer(scene, layer)));
   const layers = scene != null ? map(scene) : undefined;
   const action = $unwrap(screen.action, "Prototype action");
   const source =
@@ -574,40 +712,56 @@ export function editor(editor) {
   const shapeList = layers.map((layer) =>
     shape(
       layer,
-      (scene != null ? Scene.instanceForLayer(scene, layer.id) : undefined) != null,
-      scene != null ? Scene.imageForLayer(scene, layer) : undefined,
+      (scene != null ? Scene$1.instanceForLayer(scene, layer.id) : undefined) != null,
+      scene != null ? Scene$1.imageForLayer(scene, layer) : undefined,
     ),
   );
-  const layerList = layers.toReversed().map((layer) => layerButton(layer, selected));
-  const find = layers.find((layer) => layer.id === selected);
-  function map(layer) {
-    const instance = scene != null ? Scene.instanceForLayer(scene, layer.id) : undefined;
-    return instance != null
-      ? instanceInspector(instance)
-      : inspector(
-          layer,
-          editor.fieldsVersion,
-          scene != null ? Scene.imageForLayer(scene, layer) : undefined,
-        );
+  const disabled = editor.busy || editor.recovery != null || scene == null;
+  const selectedLayer = layers.find((layer) => layer.id === selected);
+  const group = scene != null ? scene.groups.find((group) => group.id === selected) : undefined;
+  const instance =
+    scene != null
+      ? (scene.instances.find((instance) => instance.id === selected) ??
+        (selectedLayer != null ? Scene$1.instanceForLayer(scene, selectedLayer.id) : undefined))
+      : undefined;
+  let properties;
+  if (group != null) {
+    properties = groupInspector(group, disabled);
+  } else if (instance != null) {
+    properties = instanceInspector(instance);
+  } else if (selectedLayer != null) {
+    properties = inspector(
+      selectedLayer,
+      editor.fieldsVersion,
+      scene != null ? Scene$1.imageForLayer(scene, selectedLayer) : undefined,
+    );
+  } else {
+    properties = undefined;
   }
-  const properties = find != null ? map(find) : undefined;
+  const parent = instance?.id ?? selected;
+  const parentControl =
+    scene != null && scene.groups.length !== 0
+      ? parent != null
+        ? parentPicker(scene, parent, disabled)
+        : undefined
+      : undefined;
   const documentTitle = editor.project.title;
   const screen = editor.screen;
   const poster = editor.poster;
   const scale = editor.zoom / 100;
   const sheetStyle = { width: `calc(var(--fit-width) * ${$displayF64(scale)})` };
   const zoomLabel = `${$toFixed(editor.zoom, 0)}%`;
-  const disabled = editor.busy || editor.recovery != null || editor.document.scene == null;
-  const className = SHELL.header;
-  const className$1 = SHELL.brand;
-  const className$2 = SHELL.crumb;
-  const className$3 = EDITOR_STYLES.layout;
-  const className$4 = EDITOR_STYLES.eyebrow;
+  const className = EDITOR_STYLES.editor;
+  const className$1 = SHELL.header;
+  const className$2 = SHELL.brand;
+  const className$3 = SHELL.crumb;
+  const className$4 = EDITOR_STYLES.layout;
+  const className$5 = EDITOR_STYLES.eyebrow;
   const value =
     screen != null && (screen.action != null || editor.screens.length > 1)
       ? journeyNavigation(editor, screen, false)
       : undefined;
-  const className$5 = EDITOR_STYLES.layers;
+  const children = layerPanel(scene, selected, disabled);
   const className$6 = EDITOR_STYLES.workspace;
   const className$7 = CANVAS["canvas-scroll"];
   const ref = Zoom.attach;
@@ -617,7 +771,7 @@ export function editor(editor) {
   const value$2 = poster ? ARTBOARD.artboard : `${ARTBOARD.artboard} ${ARTBOARD.mockup}`;
   const className$10 = poster ? EDITOR_STYLES.imprint : undefined;
   const className$11 = EDITOR_STYLES.shapes;
-  const children = poster && (
+  const children$1 = poster && (
     <div className={EDITOR_STYLES.caption}>
       <b>Orbit study.</b>
       <small>
@@ -637,13 +791,13 @@ export function editor(editor) {
   const value$3 = componentPicker(disabled);
   const entry = editor.history.undo.at(-1);
   const condition = entry != null;
-  const children$1 = condition
+  const children$2 = condition
     ? `${entry.label} · ${entry.author === "Agent" ? "Agent" : "You"}`
     : undefined;
   const href = editor.recovery != null ? Project.href(editor.recovery) : undefined;
   const value$4 = Drafts.hasPrevious(Editor.storageKey(editor)) && !editor.busy;
   const className$18 = EDITOR_STYLES.agent;
-  const children$2 = editor.saveFailed && editor.recovery == null && (
+  const children$3 = editor.saveFailed && editor.recovery == null && (
     <>
       <p>Download a copy before leaving to keep your unsaved edits.</p>
       <button
@@ -669,7 +823,7 @@ export function editor(editor) {
       </button>
     </>
   );
-  const children$3 = editor.server && (
+  const children$4 = editor.server && (
     <div id="server" className={EDITOR_STYLES.server}>
       <button disabled={disabled} onClick={() => syncToServer(false)}>
         Save to server
@@ -680,28 +834,26 @@ export function editor(editor) {
     </div>
   );
   return (
-    <>
-      <header className={className}>
-        <b className={className$1}>
+    <div className={className}>
+      <header className={className$1}>
+        <b className={className$2}>
           <i>▦</i> Agent Pixel
         </b>
-        <span className={className$2}>
+        <span className={className$3}>
           Workspace / <strong>{documentTitle}</strong>
         </span>
         <a href="./">← Projects</a>
         <a href="https://github.com/rust-js-lang/agent-pixel/blob/main/DESIGN.md">Design doc ↗</a>
       </header>
-      <main className={className$3}>
-        <aside>
-          <div className={className$4}>DOCUMENT</div>
+      <main className={className$4}>
+        <aside aria-label="Layers panel">
+          <div className={className$5}>DOCUMENT</div>
           <h2>{documentTitle}</h2>
           <p>{!poster ? "Mobile artboard" : "Poster composition"}</p>
           {value}
           <hr />
           <h3>Layers</h3>
-          <div id="layers" className={className$5}>
-            {layerList}
-          </div>
+          {children}
         </aside>
         <section className={className$6} aria-label="Canvas">
           <div id="canvas-scroll" className={className$7} ref={ref}>
@@ -720,7 +872,7 @@ export function editor(editor) {
                   <div id="shapes" className={className$11}>
                     {shapeList}
                   </div>
-                  {children}
+                  {children$1}
                 </div>
               </div>
             </div>
@@ -743,7 +895,7 @@ export function editor(editor) {
               </button>
               <button
                 type="button"
-                disabled={disabled || selected == null}
+                disabled={disabled || selected == null || group != null}
                 onClick={deleteSelection}
               >
                 Delete layer
@@ -799,7 +951,7 @@ export function editor(editor) {
             </div>
           </div>
         </section>
-        <aside className={className$16}>
+        <aside aria-label="Inspector" className={className$16}>
           <div className={className$17}>INSPECTOR</div>
           <p>
             <label>
@@ -821,7 +973,8 @@ export function editor(editor) {
           </p>
           {value$3}
           {properties}
-          {condition && <p aria-label="Last edit">{children$1}</p>}
+          {parentControl}
+          {condition && <p aria-label="Last edit">{children$2}</p>}
           {editor.recovery != null && (
             <p>
               <a href={href}>Open recovery project</a>
@@ -847,17 +1000,17 @@ export function editor(editor) {
               Copy previous checkpoint
             </button>
           )}
-          {children$2}
+          {children$3}
           <span id="agent" className={className$18}>
             {editor.agent}
           </span>
-          {children$3}
+          {children$4}
         </aside>
       </main>
       <footer className={SHELL.footer} role="status" id="status">
         {editor.status}
       </footer>
-    </>
+    </div>
   );
 }
 

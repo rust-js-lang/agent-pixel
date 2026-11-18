@@ -1,5 +1,5 @@
 .canvas-scroll {
-  width: 100%; flex: 1 1 auto; min-height: 0; overflow: auto; overflow-anchor: none;
+  width: 100%; flex: 1 1 auto; min-height: 0; overflow: auto; overflow-anchor: none; overscroll-behavior: contain;
   container-type: inline-size;
 }
 .canvas-stage {

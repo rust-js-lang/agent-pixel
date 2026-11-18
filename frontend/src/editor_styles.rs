@@ -32,6 +32,11 @@ impl Styles {
         unreachable!()
     }
 
+    #[cfg_attr(rust_js, rust_js::link_name = "get editor")]
+    pub fn editor(&self) -> String {
+        unreachable!()
+    }
+
     #[cfg_attr(rust_js, rust_js::link_name = "get eyebrow")]
     pub fn eyebrow(&self) -> String {
         unreachable!()

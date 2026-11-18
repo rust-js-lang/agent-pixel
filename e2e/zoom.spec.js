@@ -57,3 +57,33 @@ test("canvas styles load from the bundled CSS Module with scoped class names", a
   await expect(controls).toBeVisible();
   await expect(page.locator("#canvas-scroll")).toHaveCSS("overflow", "auto");
 });
+
+for (const viewport of [{ width: 1100, height: 720 }, { width: 390, height: 820 }]) {
+  test(`vertical wheel stays inside the canvas at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.goto("/?project=current-reminders");
+    await expect(page.locator("#agent")).toHaveText("WebMCP tools ready");
+    const layerPanel = page.getByRole("complementary", { name: "Layers panel" });
+    const inspector = page.getByRole("complementary", { name: "Inspector" });
+    const controls = page.getByRole("group", { name: "Canvas zoom" });
+    const zoom = controls.getByRole("button", { name: "Zoom in" });
+    for (let i = 0; i < 6; i++) await zoom.click();
+    const controlsOnScreen = [page.getByRole("banner"), layerPanel, inspector, controls];
+    const positions = await Promise.all(controlsOnScreen.map(item => item.boundingBox()));
+    const canvas = page.locator("#canvas-scroll");
+    await canvas.hover();
+    await canvas.evaluate(node => { node.scrollTop = 0; });
+    await page.mouse.wheel(0, 140);
+    await expect.poll(() => canvas.evaluate(node => node.scrollTop)).toBeGreaterThan(0);
+    const belowTop = await canvas.evaluate(node => node.scrollTop);
+    await page.mouse.wheel(0, -75);
+    await expect.poll(() => canvas.evaluate(node => node.scrollTop)).toBeLessThan(belowTop);
+    await canvas.evaluate(node => { node.scrollTop = node.scrollHeight; });
+    const atBottom = await canvas.evaluate(node => node.scrollTop);
+    await page.mouse.wheel(0, 140);
+    await expect.poll(() => canvas.evaluate(node => node.scrollTop)).toBe(atBottom);
+    expect(await page.evaluate(() => ({ y: window.scrollY, overflow: document.documentElement.scrollHeight - innerHeight })))
+      .toEqual({ y: 0, overflow: 0 });
+    expect(await Promise.all(controlsOnScreen.map(item => item.boundingBox()))).toEqual(positions);
+  });
+}

@@ -34,7 +34,7 @@ Ship this first so larger designs are safe to edit.
 
 ## M2 · Design a feature from scratch
 
-Build the editing primitives in this order so frames, constraints, and component instances share the same document model.
+Build the editing primitives in this order so frames, constraints, and component instances share the same document model. The editor now keeps canvas scrolling inside the workspace. The Layers panel supports persistent nested groups and linked component children, with the same hierarchy edits available through WebMCP. Named screens, independently sized frames, and the other editing primitives remain ahead.
 
 1. **Screens and layers.** Create, name, duplicate, reorder, and delete pages and frames of arbitrary supported sizes. Add nested frames, multi-select, groups, layer order, visibility, locks, clipping, and copy/paste. Give each screen a stable route.
 2. **Precision editing.** Add resize handles, alignment, distribution, snapping, and keyboard nudge. Support fill, stroke, corner radius, opacity, basic vector paths, and image placement. Add usable type controls for family, weight, line height, alignment, and wrapping. Define how missing fonts are reported and rendered.

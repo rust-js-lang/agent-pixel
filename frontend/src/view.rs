@@ -8,11 +8,12 @@ use crate::{
 use pixel_geometry::{
     BOARD_HEIGHT, BOARD_WIDTH,
     assets::ImageAsset,
-    scene::{Author, ComponentInstance, Layer, Patch},
+    hierarchy::{LayerGroup, LayerNode},
+    scene::{Author, ComponentInstance, Edit, Layer, Patch, Scene},
 };
-use react::{CSSProperties, JSX, event::PointerEvent, jsx};
+use react::{CSSProperties, JSX, event::PointerEvent, jsx, use_state};
 use std::cell::RefCell;
-use webapi::{HTMLButtonElement, window_global::window};
+use webapi::{FormDataEntryValue, HTMLButtonElement, window_global::window};
 
 struct Drag {
     id: String,
@@ -45,16 +46,6 @@ impl Drag {
 
 fn percent(value: i32, extent: i32) -> String {
     format!("{}%", f64::from(value) / f64::from(extent) * 100.0)
-}
-
-fn label(layer: &Layer) -> String {
-    if let Some(text) = &layer.text {
-        text.clone()
-    } else if layer.id.len() == 36 || layer.id.as_bytes().get(36) == Some(&b'-') {
-        format!("{} {}", layer.kind, &layer.id[..4])
-    } else {
-        layer.id.replace('-', " ")
-    }
 }
 
 fn begin_drag(layer: &Layer, event: &PointerEvent<HTMLButtonElement>) {
@@ -167,7 +158,7 @@ fn shape(layer: &Layer, linked: bool, image: Option<&ImageAsset>) -> JSX::Elemen
     };
     jsx! {
         <button key={layer.id.clone()} className={class} style={styles}
-            aria-label={format!("Select {}", image.map_or_else(|| label(layer), |asset| asset.image.name.clone()))}
+            aria-label={format!("Select {}", image.map_or_else(|| layer.name(), |asset| asset.image.name.clone()))}
             onClick={move |_| select(id.clone())}
             onPointerDown={move |event| { if !linked { begin_drag(&captured, event); } }}
             onPointerMove={move_drag}
@@ -176,16 +167,103 @@ fn shape(layer: &Layer, linked: bool, image: Option<&ImageAsset>) -> JSX::Elemen
     }
 }
 
-fn layer_button(layer: &Layer, selected: Option<&str>) -> JSX::Element {
-    let id = layer.id.clone();
-    let swatch = CSSProperties::new()
-        .background(layer.fill.clone())
-        .border_radius(if layer.kind == "ellipse" { "50%" } else { "0" });
+struct LayerRowProps {
+    node: LayerNode,
+    selected: Option<String>,
+}
+
+fn LayerRow(LayerRowProps { node, selected }: LayerRowProps) -> JSX::Element {
+    let (expanded, set_expanded) = use_state(|| true);
+    let expanded = *expanded;
+    let container = node.kind == "group" || node.kind == "instance";
+    let id = node.id.clone();
+    let name = node.name.clone();
+    let icon = match node.kind.as_str() {
+        "group" => "▱",
+        "instance" => "◇",
+        "text" => "T",
+        "image" => "▧",
+        "ellipse" => "○",
+        _ => "□",
+    };
+    let children = node
+        .children
+        .into_iter()
+        .map(|child| {
+            jsx! {
+                <LayerRow key={child.id.clone()} node={child} selected={selected.clone()} />
+            }
+        })
+        .collect::<Vec<_>>();
     jsx! {
-        <button key={layer.id.clone()} className={EDITOR_STYLES.layer()} aria-pressed={selected == Some(layer.id.as_str())}
-            onClick={move |_| select(id.clone())}>
-            <i style={swatch} />{label(layer)}
-        </button>
+        <li id={format!("tree-{}", node.id)}>
+            <div>
+                {container.then(|| jsx! {
+                    <button type="button" aria-label={format!("{} {}", if expanded { "Collapse" } else { "Expand" }, name)}
+                        aria-expanded={expanded} onClick={move |_| set_expanded.set(!expanded)}>{if expanded { "▾" } else { "▸" }}</button>
+                })}
+                <button type="button" className={EDITOR_STYLES.layer()} aria-pressed={selected.as_deref() == Some(node.id.as_str())}
+                    title={name.clone()} onClick={move |_| select(id.clone())}><span aria-hidden="true">{icon}</span>{name}</button>
+            </div>
+            {(expanded && !children.is_empty()).then(|| jsx! { <ul>{children}</ul> })}
+        </li>
+    }
+}
+
+fn layer_panel(scene: Option<&Scene>, selected: Option<&str>, disabled: bool) -> JSX::Element {
+    let rows = scene.map(|scene| scene.layer_tree()).unwrap_or_default();
+    let nodes = rows.into_iter().map(|node| jsx! {
+        <LayerRow key={node.id.clone()} node={node} selected={selected.map(str::to_owned)} />
+    }).collect::<Vec<_>>();
+    jsx! {
+        <div id="layers" className={EDITOR_STYLES.layers()}>
+            <form aria-label="New layer group" action={|data: &webapi::FormData| {
+                if let Some(FormDataEntryValue::Str(name)) = data.get("group-name") {
+                    crate::edit_hierarchy(Edit::CreateGroup { name: name.trim().into(), parent_id: None });
+                }
+            }}>
+                <input name="group-name" aria-label="New group name" placeholder="Group name" required maxLength={80} disabled={disabled} />
+                <button type="submit" disabled={disabled} aria-label="Add layer group">"+ Group"</button>
+            </form>
+            <ul aria-label="Layer hierarchy">{nodes}</ul>
+        </div>
+    }
+}
+
+fn parent_picker(scene: &Scene, id: &str, disabled: bool) -> JSX::Element {
+    let id = id.to_owned();
+    let value = scene.parent_group(&id).unwrap_or("").to_owned();
+    let options = scene.groups.iter().filter(|group| scene.is_valid_parent(&id, &group.id))
+        .map(|group| jsx! { <option key={group.id.clone()} value={group.id.clone()}>{group.name.clone()}</option> })
+        .collect::<Vec<_>>();
+    jsx! {
+        <label>"Parent group"
+            <select value={value} disabled={disabled} onChange={move |event| {
+                let value = event.current_target().value();
+                crate::edit_hierarchy(Edit::SetLayerParent { id: id.clone(), parent_id: (!value.is_empty()).then_some(value) });
+            }}>
+                <option value="">"Top level"</option>{options}
+            </select>
+        </label>
+    }
+}
+
+fn group_inspector(group: &LayerGroup, disabled: bool) -> JSX::Element {
+    let id = group.id.clone();
+    let rename_id = id.clone();
+    jsx! {
+        <>
+            <h2>{group.name.clone()}</h2>
+            <form key={format!("{}-{}", group.id, group.name)} aria-label="Rename group" action={move |data: &webapi::FormData| {
+                if let Some(FormDataEntryValue::Str(name)) = data.get("group-name") {
+                    crate::edit_hierarchy(Edit::RenameGroup { id: rename_id.clone(), name: name.trim().into() });
+                }
+            }}>
+                <input name="group-name" aria-label="Group name" defaultValue={group.name.clone()} required maxLength={80} disabled={disabled} />
+                <button type="submit" disabled={disabled}>"Rename"</button>
+            </form>
+            <p><button type="button" disabled={disabled} onClick={move |_| crate::edit_hierarchy(Edit::Ungroup { id: id.clone() })}>"Ungroup"</button></p>
+        </>
     }
 }
 
@@ -246,7 +324,7 @@ fn inspector(layer: &Layer, version: u32, image: Option<&ImageAsset>) -> JSX::El
     });
     jsx! {
         <>
-            <h2 id="name">{label(layer)}</h2><hr /><h3>"Geometry"</h3>
+            <h2 id="name">{layer.name()}</h2><hr /><h3>"Geometry"</h3>
             <form id="fields" onSubmit={|event| event.prevent_default()}>{fields}</form>
             {text}
             {if let Some(asset) = image { jsx! { <p>{asset.image.name.clone()}</p> } } else { jsx! { <>
@@ -418,33 +496,48 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
             )
         })
         .collect::<Vec<_>>();
-    let layer_list = layers
+    let disabled = editor.busy || editor.recovery.is_some() || scene.is_none();
+    let selected_layer = layers
         .iter()
-        .rev()
-        .map(|layer| layer_button(layer, selected))
-        .collect::<Vec<_>>();
-    let properties = layers
-        .iter()
-        .find(|layer| Some(layer.id.as_str()) == selected)
-        .map(
-            |layer| match scene.and_then(|scene| scene.instance_for_layer(&layer.id)) {
-                Some(instance) => instance_inspector(instance),
-                None => inspector(
-                    layer,
-                    editor.fields_version,
-                    scene.and_then(|scene| scene.image_for_layer(layer)),
-                ),
-            },
-        );
+        .find(|layer| Some(layer.id.as_str()) == selected);
+    let group = scene.and_then(|scene| {
+        scene
+            .groups
+            .iter()
+            .find(|group| Some(group.id.as_str()) == selected)
+    });
+    let instance = scene.and_then(|scene| {
+        scene
+            .instances
+            .iter()
+            .find(|instance| Some(instance.id.as_str()) == selected)
+            .or_else(|| selected_layer.and_then(|layer| scene.instance_for_layer(&layer.id)))
+    });
+    let properties = if let Some(group) = group {
+        Some(group_inspector(group, disabled))
+    } else if let Some(instance) = instance {
+        Some(instance_inspector(instance))
+    } else {
+        selected_layer.map(|layer| {
+            inspector(
+                layer,
+                editor.fields_version,
+                scene.and_then(|scene| scene.image_for_layer(layer)),
+            )
+        })
+    };
+    let parent = instance.map(|instance| instance.id.as_str()).or(selected);
+    let parent_control = scene
+        .filter(|scene| !scene.groups.is_empty())
+        .and_then(|scene| parent.map(|id| parent_picker(scene, id, disabled)));
     let document_title = editor.project.title.as_str();
     let screen = editor.screen.as_ref();
     let poster = editor.poster;
     let scale = editor.zoom / 100.0;
     let sheet_style = CSSProperties::new().width(format!("calc(var(--fit-width) * {scale})"));
     let zoom_label = format!("{:.0}%", editor.zoom);
-    let disabled = editor.busy || editor.recovery.is_some() || editor.document.scene.is_none();
     jsx! {
-        <>
+        <div className={EDITOR_STYLES.editor()}>
             <header className={SHELL.header()}>
                 <b className={SHELL.brand()}><i>"▦"</i>" Agent Pixel"</b>
                 <span className={SHELL.crumb()}>"Workspace / "<strong>{document_title}</strong></span>
@@ -452,10 +545,10 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
                 <a href="https://github.com/rust-js-lang/agent-pixel/blob/main/DESIGN.md">"Design doc ↗"</a>
             </header>
             <main className={EDITOR_STYLES.layout()}>
-                <aside>
+                <aside aria-label="Layers panel">
                     <div className={EDITOR_STYLES.eyebrow()}>"DOCUMENT"</div><h2>{document_title}</h2>
                     <p>{if !poster { "Mobile artboard" } else { "Poster composition" }}</p>
-                    {screen.filter(|screen| screen.action.is_some() || editor.screens.len() > 1).map(|screen| journey_navigation(editor, screen, false))}<hr /><h3>"Layers"</h3><div id="layers" className={EDITOR_STYLES.layers()}>{layer_list}</div>
+                    {screen.filter(|screen| screen.action.is_some() || editor.screens.len() > 1).map(|screen| journey_navigation(editor, screen, false))}<hr /><h3>"Layers"</h3>{layer_panel(scene, selected, disabled)}
                 </aside>
                 <section className={EDITOR_STYLES.workspace()} aria-label="Canvas">
                     <div id="canvas-scroll" className={CANVAS.canvas_scroll()} ref={zoom::attach}>
@@ -474,7 +567,7 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
                     <div className={EDITOR_STYLES.tools()}>
                         <button type="button" disabled={disabled || editor.history.undo.is_empty()} onClick={|_| crate::history_action(true)}>"Undo"</button>
                         <button type="button" disabled={disabled || editor.history.redo.is_empty()} onClick={|_| crate::history_action(false)}>"Redo"</button>
-                        <button type="button" disabled={disabled || selected.is_none()} onClick={|_| crate::delete_selection()}>"Delete layer"</button>
+                        <button type="button" disabled={disabled || selected.is_none() || group.is_some()} onClick={|_| crate::delete_selection()}>"Delete layer"</button>
                         <button id="rect" disabled={disabled} onClick={|_| add("rectangle")}>"▢  Rectangle +"</button>
                         <button id="ellipse" disabled={disabled} onClick={|_| add("ellipse")}>"○  Ellipse +"</button>
                         <button disabled={disabled} onClick={|_| edit(Patch { kind: Some("text".into()), text: Some("Label".into()), font_size: Some(20), width: Some(170), height: Some(32), fill: Some("#20231f".into()), ..Patch::default() })}>"T  Text +"</button>
@@ -486,7 +579,7 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
                     </div>
                     </div>
                 </section>
-                <aside className={EDITOR_STYLES.properties()}>
+                <aside aria-label="Inspector" className={EDITOR_STYLES.properties()}>
                     <div className={EDITOR_STYLES.eyebrow()}>"INSPECTOR"</div>
                     <p><label>"Place image"
                         <input type="file" accept="image/png,image/jpeg,image/webp" disabled={disabled} onChange={|event| {
@@ -499,6 +592,7 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
                     </label></p>
                     {component_picker(disabled)}
                     {properties}
+                    {parent_control}
                     {editor.history.undo.last().map(|entry| jsx! {
                         <p aria-label="Last edit">{format!("{} · {}", entry.label, if matches!(entry.author, Author::Agent) { "Agent" } else { "You" })}</p>
                     })}
@@ -541,7 +635,7 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
                 </aside>
             </main>
             <footer className={SHELL.footer()} role="status" id="status">{editor.status.clone()}</footer>
-        </>
+        </div>
     }
 }
 

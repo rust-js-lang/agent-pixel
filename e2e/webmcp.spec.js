@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 test.beforeEach(async ({ page }) => {
   await page.goto("/?project=orbit");
   await expect.poll(async () => (await page.webmcp.tools()).map(tool => tool.name).sort())
-    .toEqual(["apply_edits", "edit_layer", "export_unsaved_project", "get_save_status", "insert_component", "list_components", "read_design", "recover_checkpoint", "redo_edit", "retry_draft_save", "switch_component_variant", "undo_edit"]);
+    .toEqual(["apply_edits", "edit_layer", "export_unsaved_project", "get_save_status", "insert_component", "list_components", "read_design", "read_layer_tree", "recover_checkpoint", "redo_edit", "retry_draft_save", "switch_component_variant", "undo_edit"]);
 });
 
 test("an agent creates a layer and reads back a human's edit after reload", async ({ page }) => {

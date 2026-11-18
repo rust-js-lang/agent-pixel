@@ -7,6 +7,10 @@ import { Project, projectSerialize_serialize } from "./projects.js";
 import * as Projects from "./projects.js";
 import { createRoot } from "react-dom/client";
 import {
+  Scene,
+  layerNodeSerialize_serialize,
+} from "../../core/src/hierarchy.js";
+import {
   Batch,
   batchSerialize_serialize,
   componentInsertSerialize_serialize,
@@ -94,8 +98,15 @@ export const Editor = {
         : {
             ...editor.seed,
             layers: editor.seed.layers.map((item) => ({ ...item })),
-            instances: editor.seed.instances.map((item) => ({ ...item })),
+            instances: editor.seed.instances.map((item) => ({
+              ...item,
+              layerIds: item.layerIds.slice(),
+            })),
             assets: editor.seed.assets.slice(),
+            groups: editor.seed.groups.map((item) => ({
+              ...item,
+              children: item.children.slice(),
+            })),
           }) ?? Project.initialScene(editor.project)
     );
   },
@@ -404,6 +415,53 @@ async function commitBatch(batch, author) {
   return await changeDesign("batch", json, author);
 }
 
+export function editHierarchy(edit) {
+  const revision = $withBorrow(editor, (editor) => editor.revision, true);
+  const edit$1 = edit.TAG === "Patch" ? { ...edit, layer: { ...edit.layer } } : edit;
+  (async () => {
+    const value = await commitBatch(
+      {
+        revision,
+        edits: [edit$1],
+      },
+      "Person",
+    );
+    if (value.TAG === "Err") {
+      status(value._0);
+    }
+  })();
+}
+
+export function layerTree() {
+  return $withBorrow(
+    editor,
+    (editor) => {
+      const result =
+        editor.document.scene != null
+          ? { TAG: "Ok", _0: editor.document.scene }
+          : { TAG: "Err", _0: "No artboard is open." };
+      if (result.TAG === "Err") {
+        return result;
+      }
+      const scene = result._0;
+      const result$1 = $toJson(
+        Scene.layerTree(scene),
+        (value, json) => {
+          json.beginArray();
+          for (const item of value) {
+            json.element();
+            layerNodeSerialize_serialize(item, json);
+          }
+          json.endArray();
+        },
+        false,
+      );
+      return result$1.TAG === "Err" ? { TAG: "Err", _0: $displayJsonError(result$1._0) } : result$1;
+    },
+    true,
+  );
+}
+
 export function addImage(file) {
   const revision = $withBorrow(editor, (editor) => editor.revision, true);
   (async () => {
@@ -587,8 +645,15 @@ async function persistDraft() {
               : {
                   ...editor.document.scene,
                   layers: editor.document.scene.layers.map((item) => ({ ...item })),
-                  instances: editor.document.scene.instances.map((item) => ({ ...item })),
+                  instances: editor.document.scene.instances.map((item) => ({
+                    ...item,
+                    layerIds: item.layerIds.slice(),
+                  })),
                   assets: editor.document.scene.assets.slice(),
+                  groups: editor.document.scene.groups.map((item) => ({
+                    ...item,
+                    children: item.children.slice(),
+                  })),
                 },
         },
         title,
@@ -718,8 +783,15 @@ export function exportUnsaved() {
           : {
               ...editor.document.scene,
               layers: editor.document.scene.layers.map((item) => ({ ...item })),
-              instances: editor.document.scene.instances.map((item) => ({ ...item })),
+              instances: editor.document.scene.instances.map((item) => ({
+                ...item,
+                layerIds: item.layerIds.slice(),
+              })),
               assets: editor.document.scene.assets.slice(),
+              groups: editor.document.scene.groups.map((item) => ({
+                ...item,
+                children: item.children.slice(),
+              })),
             };
       const result =
         option != null ? { TAG: "Ok", _0: option } : { TAG: "Err", _0: "No artboard to export." };
@@ -857,7 +929,10 @@ async function applyDesign(command, json, author) {
       function fallback() {
         const old = editor.selected;
         editor.selected = undefined;
-        const keep = (id) => captured.layers.some((layer) => layer.id === id);
+        const keep = (id) =>
+          captured.layers.some((layer) => layer.id === id) ||
+          captured.groups.some((group) => group.id === id) ||
+          captured.instances.some((instance) => instance.id === id);
         return old != null && keep(old) ? old : undefined;
       }
       const selected = captured$3 ?? fallback();
