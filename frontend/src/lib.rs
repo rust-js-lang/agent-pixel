@@ -1,5 +1,9 @@
 mod browser;
+mod transport;
 mod view;
+mod webmcp;
+
+pub use transport::serve_worker;
 
 use js::JsError;
 use pixel_geometry::scene::{Design, Document, Patch, Scene};
@@ -50,29 +54,6 @@ impl Editor {
     }
 }
 
-const TOOLS: &str = r##"[
-  {
-    "name": "read_design",
-    "description": "Read the artboard and its ordered layers.",
-    "inputSchema": {"type":"object","properties":{},"additionalProperties":false},
-    "annotations": {"readOnlyHint":true}
-  },
-  {
-    "name": "edit_layer",
-    "description": "Patch a layer by ID or omit ID to create a shape. Coordinates are artboard pixels.",
-    "inputSchema": {
-      "type":"object","minProperties":1,"additionalProperties":false,
-      "properties":{
-        "id":{"type":"string"},"kind":{"type":"string","enum":["rectangle","ellipse","text"]},
-        "x":{"type":"integer"},"y":{"type":"integer"},"width":{"type":"integer"},"height":{"type":"integer"},
-        "fill":{"type":"string","description":"Hex fill or text color","pattern":"^#[0-9A-Fa-f]{6}$"},
-        "text":{"type":"string","minLength":1,"maxLength":512,"description":"Content for a text layer"},
-        "fontSize":{"type":"integer","minimum":8,"maximum":96}
-      }
-    }
-  }
-]"##;
-
 pub fn mount() {
     let node = window()
         .document()
@@ -104,9 +85,7 @@ fn message(error: &JsError) -> String {
 }
 
 async fn request(command: &str, body: &str) -> Result<Design, String> {
-    let body = browser::request_worker(command, body)
-        .await
-        .map_err(message)?;
+    let body = transport::request(command, body).await?;
     serde_json::from_str(&body).map_err(|error| error.to_string())
 }
 
@@ -165,12 +144,7 @@ async fn start() -> Result<(), String> {
         });
     });
     render();
-    let result = browser::register_tools(
-        TOOLS,
-        || js::promise(read_design()),
-        |input| js::promise(edit_design(input)),
-    )
-    .await;
+    let result = webmcp::register_tools().await;
     EDITOR.with_borrow_mut(|editor| {
         editor.agent = match result {
             Ok(true) => "WebMCP tools ready".into(),

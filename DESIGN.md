@@ -31,7 +31,7 @@ Expose a read tool to discover artboard dimensions, layer IDs and bounds. A writ
 
 ## Rust across runtimes
 
-The editor state, React components, drag behavior and WebMCP tool handlers live in Rust. The official rust-js React bindings compile the component tree to React JSX. A small JavaScript adapter handles worker messages, browser storage, HTTP and WebMCP registration.
+The editor state, React components, drag behavior and WebMCP tool handlers live in Rust. The official rust-js React bindings compile the component tree to React JSX. Rust also handles worker messages, browser storage, HTTP and WebMCP registration. The page and worker each start by importing and calling their compiled Rust entry point.
 
 The worker and native server share the Rust document model, including its shape validation and serialization. rust-js compiles the worker model to ES modules. Cargo links the same crate into the native server. The Pages workflow tests the compiled browser build and native Rust before publishing.
 

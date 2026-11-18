@@ -4,3 +4,29 @@ export interface HttpResponse {
     status: number;
     body: string;
 }
+
+export function workspaceQuery(name: string): boolean;
+
+export function loadDraft(key: string): {
+    TAG: "Ok";
+    _0: string | null | undefined;
+} | {
+    TAG: "Err";
+    _0: unknown;
+};
+
+export function saveDraft(key: string, body?: string | null | undefined): {
+    TAG: "Ok";
+    _0?: undefined;
+} | {
+    TAG: "Err";
+    _0: unknown;
+};
+
+export function documentRequest(body?: string | null | undefined): Promise<{
+    TAG: "Ok";
+    _0: HttpResponse;
+} | {
+    TAG: "Err";
+    _0: unknown;
+}>;

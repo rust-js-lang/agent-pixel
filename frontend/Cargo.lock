@@ -10,6 +10,7 @@ dependencies = [
  "rust-js-builtins",
  "rust-js-react",
  "rust-js-webapi",
+ "serde",
  "serde_json",
 ]
 

@@ -23,7 +23,8 @@ Select a shape on the poster or in Layers. Drag it, edit its bounds in the inspe
 
 - `frontend/src` contains the editor, React components written with `jsx!`, and the WebMCP tool definitions and handlers.
 - `core/src` contains the poster, edits, bounds and validation shared by the worker and the native server.
-- `site` contains the HTML entry, styles and browser adapters for worker messages, storage, fetch and WebMCP registration.
+- `frontend/src/browser.rs`, `transport.rs` and `webmcp.rs` handle platform calls, worker messages and tool registration in Rust.
+- `site` contains HTML and CSS, plus the page and worker entry modules that call the compiled Rust functions.
 
 The Pages build bundles checked-in rust-js output. To regenerate that output after a Rust change, build the compiler from its [documented setup](https://github.com/rust-js-lang/rust-js/blob/ae378c0fc55459c2fc4b4796502a74bec5cd4f5c/DEVELOPMENT.md) and then run the frontend build. rust-js also regenerates the Rust dependencies used by the frontend.
 
