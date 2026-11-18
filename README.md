@@ -83,3 +83,7 @@ An agent can call `list_components` for the variant IDs, then call `insert_compo
 ## User journey and developer handoff
 
 Open **Current — Reminder journey** for five editable screens of the off-peak reminder feature. Select **Play prototype** and follow the primary actions. The review screen also links to a simulated save failure. Each screen has its own saved draft. The [developer handoff](handoff/CURRENT-REMINDERS.md) documents the screen map, state rules, and acceptance criteria.
+
+## Canvas zoom
+
+Use **−** and **+** beside the editor toolbar, or use Ctrl/Cmd with **+** or **−**. Click the percentage or press Ctrl/Cmd+0 to return to fit. Trackpad pinch gestures that arrive as a modified wheel event and Ctrl/Cmd+wheel over the canvas zoom the artboard around the pointer. Regular scrolling pans the workspace when the artboard is larger than the viewport.

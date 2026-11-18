@@ -2,6 +2,7 @@
 
 import * as Journey from "./journey.js";
 import { changeVariant, edit, placeComponent, select, status, syncToServer } from "./lib.js";
+import * as Zoom from "./zoom.js";
 import { BOARD_HEIGHT, BOARD_WIDTH } from "../../core/src/lib.js";
 import { Scene } from "../../core/src/scene.js";
 import * as Components from "./components.js";
@@ -16,6 +17,7 @@ import {
   $parseInt,
   $round,
   $strSlice,
+  $toFixed,
   $unwrap,
   $utf8Bytes,
   $withBorrow,
@@ -507,9 +509,16 @@ export function editor(editor) {
   const documentTitle = editor.project.title;
   const screen = editor.screen;
   const poster = Project.isPoster(editor.project);
+  const scale = editor.zoom / 100;
+  const sheetStyle = { width: `calc(var(--fit-width) * ${$displayF64(scale)})` };
+  const zoomLabel = `${$toFixed(editor.zoom, 0)}%`;
   const disabled = editor.busy || editor.document.scene == null;
   const children = screen != null && journeyNavigation(screen, false);
+  const ref = Zoom.attach;
   const value = screen?.title ?? "ARTBOARD 01";
+  const disabled$1 = editor.zoom <= Zoom.MIN;
+  const onClick = Zoom.reset;
+  const disabled$2 = editor.zoom >= Zoom.MAX;
   const value$1 = componentPicker(disabled);
   return (
     <>
@@ -534,50 +543,83 @@ export function editor(editor) {
           <div id="layers">{layerList}</div>
         </aside>
         <section className="workspace" aria-label="Canvas">
-          <div className="sheet">
-            <div className="legend">
-              {value}
-              <span>{`${BOARD_WIDTH} × ${BOARD_HEIGHT}`}</span>
-            </div>
-            <div id="art" className={!poster ? "mockup" : "poster"}>
-              {poster && (
-                <div className="imprint">
-                  FORM STUDIES<span>SERIES 01 / 03</span>
+          <div id="canvas-scroll" className="canvas-scroll" ref={ref}>
+            <div className="canvas-stage">
+              <div className="sheet" style={sheetStyle}>
+                <div className="legend">
+                  {value}
+                  <span>{`${BOARD_WIDTH} × ${BOARD_HEIGHT}`}</span>
                 </div>
-              )}
-              <div id="shapes">{shapeList}</div>
-              {poster && (
-                <div className="caption">
-                  <b>Orbit study.</b>
-                  <small>
-                    KINETIC FORMS<span>FIG. 01</span>
-                  </small>
+                <div id="art" className={!poster ? "mockup" : "poster"}>
+                  {poster && (
+                    <div className="imprint">
+                      FORM STUDIES<span>SERIES 01 / 03</span>
+                    </div>
+                  )}
+                  <div id="shapes">{shapeList}</div>
+                  {poster && (
+                    <div className="caption">
+                      <b>Orbit study.</b>
+                      <small>
+                        KINETIC FORMS<span>FIG. 01</span>
+                      </small>
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
           </div>
-          <div className="tools">
-            <button id="rect" disabled={disabled} onClick={() => add("rectangle")}>
-              {"▢  Rectangle +"}
-            </button>
-            <button id="ellipse" disabled={disabled} onClick={() => add("ellipse")}>
-              {"○  Ellipse +"}
-            </button>
-            <button
-              disabled={disabled}
-              onClick={() =>
-                edit({
-                  kind: "text",
-                  text: "Label",
-                  fontSize: 20,
-                  width: 170,
-                  height: 32,
-                  fill: "#20231f",
-                })
-              }
-            >
-              {"T  Text +"}
-            </button>
+          <div className="canvas-toolbar">
+            <div className="tools">
+              <button id="rect" disabled={disabled} onClick={() => add("rectangle")}>
+                {"▢  Rectangle +"}
+              </button>
+              <button id="ellipse" disabled={disabled} onClick={() => add("ellipse")}>
+                {"○  Ellipse +"}
+              </button>
+              <button
+                disabled={disabled}
+                onClick={() =>
+                  edit({
+                    kind: "text",
+                    text: "Label",
+                    fontSize: 20,
+                    width: 170,
+                    height: 32,
+                    fill: "#20231f",
+                  })
+                }
+              >
+                {"T  Text +"}
+              </button>
+            </div>
+            <div className="zoom-tools" role="group" aria-label="Canvas zoom">
+              <button
+                type="button"
+                aria-label="Zoom out"
+                disabled={disabled$1}
+                onClick={() => Zoom.step(false)}
+              >
+                −
+              </button>
+              <button
+                className="zoom-value"
+                type="button"
+                title="Reset canvas zoom"
+                aria-label={`Reset canvas zoom, current ${zoomLabel}`}
+                onClick={onClick}
+              >
+                {zoomLabel}
+              </button>
+              <button
+                type="button"
+                aria-label="Zoom in"
+                disabled={disabled$2}
+                onClick={() => Zoom.step(true)}
+              >
+                +
+              </button>
+            </div>
           </div>
         </section>
         <aside className="properties">

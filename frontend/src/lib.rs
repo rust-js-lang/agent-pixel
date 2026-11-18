@@ -6,6 +6,7 @@ mod projects;
 mod transport;
 mod view;
 mod webmcp;
+mod zoom;
 
 pub use transport::serve_worker;
 
@@ -29,6 +30,7 @@ struct Editor {
     project: Project,
     screen: Option<&'static journey::Screen>,
     preview: bool,
+    zoom: f64,
     busy: bool,
     fields_version: u32,
     status: String,
@@ -97,8 +99,12 @@ pub fn mount() {
             editor.preview = browser::workspace_query("preview");
         }
         editor.project = project;
+        editor.zoom = zoom::FIT;
         editor.server = server;
     });
+    if !EDITOR.with_borrow(|editor| editor.preview) {
+        window().add_event_listener(events::Keydown, zoom::keyboard, None);
+    }
     status("Opening document…".into());
     js::spawn(Box::new(async {
         if let Err(error) = start().await {

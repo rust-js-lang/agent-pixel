@@ -1,4 +1,4 @@
-use crate::{Editor, edit, journey, select, sync_to_server};
+use crate::{Editor, edit, journey, select, sync_to_server, zoom};
 use pixel_geometry::{
     BOARD_HEIGHT, BOARD_WIDTH,
     scene::{ComponentInstance, Layer, Patch},
@@ -396,6 +396,9 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
     let document_title = editor.project.title.as_str();
     let screen = editor.screen;
     let poster = editor.project.is_poster();
+    let scale = editor.zoom / 100.0;
+    let sheet_style = CSSProperties::new().width(format!("calc(var(--fit-width) * {scale})"));
+    let zoom_label = format!("{:.0}%", editor.zoom);
     let disabled = editor.busy || editor.document.scene.is_none();
     jsx! {
         <>
@@ -412,7 +415,9 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
                     {screen.map(|screen| journey_navigation(screen, false))}<hr /><h3>"Layers"</h3><div id="layers">{layer_list}</div>
                 </aside>
                 <section className="workspace" aria-label="Canvas">
-                    <div className="sheet">
+                    <div id="canvas-scroll" className="canvas-scroll" ref={zoom::attach}>
+                        <div className="canvas-stage">
+                    <div className="sheet" style={sheet_style}>
                         <div className="legend">{screen.map_or("ARTBOARD 01", |screen| screen.title)} <span>{format!("{BOARD_WIDTH} × {BOARD_HEIGHT}")}</span></div>
                         <div id="art" className={if !poster { "mockup" } else { "poster" }}>
                             {(poster).then(|| jsx! { <div className="imprint">"FORM STUDIES" <span>"SERIES 01 / 03"</span></div> })}
@@ -420,10 +425,19 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
                             {(poster).then(|| jsx! { <div className="caption"><b>"Orbit study."</b><small>"KINETIC FORMS" <span>"FIG. 01"</span></small></div> })}
                         </div>
                     </div>
+                        </div>
+                    </div>
+                    <div className="canvas-toolbar">
                     <div className="tools">
                         <button id="rect" disabled={disabled} onClick={|_| add("rectangle")}>"▢  Rectangle +"</button>
                         <button id="ellipse" disabled={disabled} onClick={|_| add("ellipse")}>"○  Ellipse +"</button>
                         <button disabled={disabled} onClick={|_| edit(Patch { kind: Some("text".into()), text: Some("Label".into()), font_size: Some(20), width: Some(170), height: Some(32), fill: Some("#20231f".into()), ..Patch::default() })}>"T  Text +"</button>
+                    </div>
+                    <div className="zoom-tools" role="group" aria-label="Canvas zoom">
+                        <button type="button" aria-label="Zoom out" disabled={editor.zoom <= zoom::MIN} onClick={|_| zoom::step(false)}>"−"</button>
+                        <button className="zoom-value" type="button" title="Reset canvas zoom" aria-label={format!("Reset canvas zoom, current {zoom_label}")} onClick={|_| zoom::reset()}>{zoom_label}</button>
+                        <button type="button" aria-label="Zoom in" disabled={editor.zoom >= zoom::MAX} onClick={|_| zoom::step(true)}>"+"</button>
+                    </div>
                     </div>
                 </section>
                 <aside className="properties">

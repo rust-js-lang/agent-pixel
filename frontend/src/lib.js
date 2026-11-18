@@ -24,6 +24,7 @@ import { Screen } from "./journey.js";
 import * as Journey from "./journey.js";
 import * as View from "./view.jsx";
 import * as Webmcp from "./webmcp.js";
+import * as Zoom from "./zoom.js";
 import {
   $debugJsonError,
   $displayJsonError,
@@ -37,11 +38,12 @@ import {
 } from "@rust-js/std";
 
 let root;
-const editor = {
+export const editor = {
   document: { revision: 0n },
   server: false,
   project: { id: "", title: "" },
   preview: false,
+  zoom: 0,
   busy: false,
   fieldsVersion: 0,
   status: "",
@@ -116,10 +118,14 @@ export function mount() {
         editor.preview = Browser.workspaceQuery("preview");
       }
       editor.project = project;
+      editor.zoom = Zoom.FIT;
       editor.server = server;
     },
     true,
   );
+  if (!$withBorrow(editor, (editor) => editor.preview, true)) {
+    window.addEventListener("keydown", Zoom.keyboard);
+  }
   status("Opening document…");
   (async () => {
     const value = await start();
@@ -135,7 +141,7 @@ export function renderDashboard() {
   }
 }
 
-function render() {
+export function render() {
   const root$1 = root;
   if (root$1 != null) {
     const element = $withBorrow(
