@@ -29,6 +29,19 @@ export function recoveries(): Project[];
 
 export function recoveryLibrary(key: string): ComponentVariant[] | null | undefined;
 
+export function hasPrevious(key: string): boolean;
+
+export function previous(key: string, expected: string): {
+    TAG: "Ok";
+    _0: [
+        Document,
+        ComponentVariant[] | null | undefined
+    ];
+} | {
+    TAG: "Err";
+    _0: string;
+};
+
 export function commit(key: string, expected: string | null | undefined, document: Document, title: string, library?: ComponentVariant[] | null | undefined): Promise<{
     TAG: "Ok";
     _0: Commit;

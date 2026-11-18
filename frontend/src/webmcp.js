@@ -17,6 +17,7 @@ import {
   editDesign,
   placeComponent,
   readDesign,
+  recoverPrevious,
   renderDashboard,
   retrySave,
   saveStatus,
@@ -160,6 +161,31 @@ export async function registerEditorTools() {
       description: "Retry saving a design held in memory after a browser storage error.",
       inputSchema: parse(READ_SCHEMA),
       execute: async () => toolResult(await retrySave()),
+    },
+    {
+      name: "recover_checkpoint",
+      description:
+        "Copy this screen's previous saved snapshot into a separate project. Pass the current storageRevision from get_save_status.",
+      inputSchema: parse(REVISION_SCHEMA),
+      async execute(input) {
+        const value = decode(
+          input,
+          "Provide the current storage revision.",
+          revisionDeserialize_deserialize,
+        );
+        let result;
+        if (value.TAG === "Ok") {
+          const result$1 = await recoverPrevious(value._0.revision);
+          function then(project) {
+            const result = $toJson(project, projectSerialize_serialize, false);
+            return result.TAG === "Err" ? { TAG: "Err", _0: $displayJsonError(result._0) } : result;
+          }
+          result = result$1.TAG === "Ok" ? then(result$1._0) : result$1;
+        } else {
+          result = { TAG: "Err", _0: value._0 };
+        }
+        return toolResult(result);
+      },
     },
     historyTool("undo_edit", "Undo the latest transaction in this editor session.", "undo"),
     historyTool("redo_edit", "Redo the next transaction in this editor session.", "redo"),

@@ -2,11 +2,14 @@
 
 import * as Journey from "./journey.js";
 import {
+  Editor,
   changeVariant,
   deleteSelection,
   edit,
+  editor as editor$1,
   historyAction,
   placeComponent,
+  recoverPrevious,
   retrySave,
   select,
   status,
@@ -22,6 +25,7 @@ import SHELL from "./shell.module.css";
 import { BOARD_HEIGHT, BOARD_WIDTH } from "../../core/src/lib.js";
 import { Scene } from "../../core/src/scene.js";
 import * as Components from "./components.js";
+import * as Drafts from "./drafts.js";
 import { Project } from "./projects.js";
 import {
   $borrowMut,
@@ -598,6 +602,11 @@ export function editor(editor) {
   const value$3 = componentPicker(disabled);
   const entry = editor.history.undo.at(-1);
   const condition = entry != null;
+  const children$1 = condition
+    ? `${entry.label} · ${entry.author === "Agent" ? "Agent" : "You"}`
+    : undefined;
+  const href = editor.recovery != null ? Project.href(editor.recovery) : undefined;
+  const value$4 = Drafts.hasPrevious(Editor.storageKey(editor)) && !editor.busy;
   return (
     <>
       <header className={className}>
@@ -722,13 +731,31 @@ export function editor(editor) {
           <div className={className$17}>INSPECTOR</div>
           {value$3}
           {properties}
-          {condition && (
-            <p aria-label="Last edit">{`${entry.label} · ${entry.author === "Agent" ? "Agent" : "You"}`}</p>
-          )}
+          {condition && <p aria-label="Last edit">{children$1}</p>}
           {editor.recovery != null && (
             <p>
-              <a href={Project.href(editor.recovery)}>Open recovery project</a>
+              <a href={href}>Open recovery project</a>
             </p>
+          )}
+          {value$4 && (
+            <button
+              type="button"
+              onClick={() => {
+                const revision = $withBorrow(editor$1, (editor) => editor.storageRevision, true);
+                if (revision != null) {
+                  (async () => {
+                    const value = await recoverPrevious(revision);
+                    if (value.TAG === "Ok") {
+                      window.location.assign(Project.href(value._0));
+                    } else {
+                      status(value._0);
+                    }
+                  })();
+                }
+              }}
+            >
+              Copy previous checkpoint
+            </button>
           )}
           {editor.saveFailed && editor.recovery == null && (
             <button

@@ -2,7 +2,10 @@ use crate::{
     browser, components, journey,
     projects::{self, Project},
 };
-use pixel_geometry::bundle::{BundleScreen, ProjectBundle, ScreenInfo, VERSION};
+use pixel_geometry::{
+    bundle::{BundleScreen, ProjectBundle, ScreenInfo, VERSION},
+    scene::{ComponentVariant, Document},
+};
 
 pub fn saved(project: &Project) -> Result<Option<ProjectBundle>, String> {
     let raw = browser::load_draft(&project.bundle_key()).map_err(crate::message)?;
@@ -12,7 +15,11 @@ pub fn saved(project: &Project) -> Result<Option<ProjectBundle>, String> {
 
 pub fn export(id: &str) -> Result<String, String> {
     let project = projects::find(id).ok_or("Project not found in this browser.")?;
-    let mut bundle = match saved(&project)? {
+    serialize(capture(&project)?)
+}
+
+fn capture(project: &Project) -> Result<ProjectBundle, String> {
+    let mut bundle = match saved(project)? {
         Some(bundle) => bundle,
         None => {
             let screens = if project.id == journey::PROJECT {
@@ -51,6 +58,35 @@ pub fn export(id: &str) -> Result<String, String> {
         if let Some(scene) = projects::load_document(&key)?.and_then(|document| document.scene) {
             screen.scene = scene;
         }
+    }
+    Ok(bundle)
+}
+
+pub fn restore_previous(
+    project: &Project,
+    screen_id: &str,
+    document: Document,
+    library: Option<Vec<ComponentVariant>>,
+) -> Result<Project, String> {
+    let mut bundle = capture(project)?;
+    let screen = bundle
+        .screens
+        .iter_mut()
+        .find(|screen| screen.info.id == screen_id)
+        .ok_or("Screen not found in this project.")?;
+    screen.scene = document.scene.ok_or("Previous snapshot has no artboard.")?;
+    if let Some(library) = library {
+        bundle.library = library;
+    }
+    bundle.title = format!("Checkpoint — {}", project.title)
+        .chars()
+        .take(80)
+        .collect();
+    import(&serialize(bundle)?)
+}
+
+fn serialize(mut bundle: ProjectBundle) -> Result<String, String> {
+    for screen in &mut bundle.screens {
         if screen.info.action.as_ref().is_some_and(|action| {
             !screen
                 .scene

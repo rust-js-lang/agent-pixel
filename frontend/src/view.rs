@@ -469,6 +469,19 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
                     {editor.recovery.as_ref().map(|project| jsx! {
                         <p><a href={project.href()}>"Open recovery project"</a></p>
                     })}
+                    {(crate::drafts::has_previous(&editor.storage_key()) && !editor.busy).then(|| jsx! {
+                        <button type="button" onClick={|_| {
+                            let revision = crate::EDITOR.with_borrow(|editor| editor.storage_revision.clone());
+                            if let Some(revision) = revision {
+                                js::spawn(Box::new(async move {
+                                    match crate::recover_previous(&revision).await {
+                                        Ok(project) => window().location().assign(&project.href()),
+                                        Err(error) => crate::status(error),
+                                    }
+                                }));
+                            }
+                        }}>"Copy previous checkpoint"</button>
+                    })}
                     {(editor.save_failed && editor.recovery.is_none()).then(|| jsx! {
                         <button type="button" disabled={editor.busy} onClick={|_| {
                             js::spawn(Box::new(async { let _ = crate::retry_save().await; }));

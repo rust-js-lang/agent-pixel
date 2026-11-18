@@ -63,7 +63,7 @@ export const editor = {
   agent: "",
 };
 
-const Editor = {
+export const Editor = {
   select(editor, id) {
     editor.selected = id;
   },
@@ -523,7 +523,14 @@ async function persistDraft() {
     },
     true,
   );
-  const value = await Drafts.commit(key, revision, document, title, library);
+  let library$1;
+  if (library == null && document.scene != null && document.scene.instances.length !== 0) {
+    const result = Components.library();
+    library$1 = result.TAG === "Ok" ? result._0 : undefined;
+  } else {
+    library$1 = library;
+  }
+  const value = await Drafts.commit(key, revision, document, title, library$1);
   if (value.TAG === "Ok") {
     if (value._0.TAG === "Saved") {
       const revision = value._0._0;
@@ -603,11 +610,34 @@ export function saveStatus() {
         ),
       );
       map.set("message", { TAG: "String", _0: editor.status });
+      map.set("hasPrevious", { TAG: "Bool", _0: Drafts.hasPrevious(Editor.storageKey(editor)) });
       const result = $toJson({ TAG: "Object", _0: map }, $jsonValueWrite, false);
       return result.TAG === "Err" ? { TAG: "Err", _0: $displayJsonError(result._0) } : result;
     },
     true,
   );
+}
+
+export async function recoverPrevious(expected) {
+  const [key, project, screenId] = $withBorrow(
+    editor,
+    (editor) => [
+      Editor.storageKey(editor),
+      editor.project,
+      editor.screen != null ? editor.screen.id : "main",
+    ],
+    true,
+  );
+  const result = await Drafts.reloadCache();
+  if (result.TAG === "Err") {
+    return result;
+  }
+  const result$1 = Drafts.previous(key, expected);
+  if (result$1.TAG === "Err") {
+    return result$1;
+  }
+  const [document, library] = result$1._0;
+  return Backup.restorePrevious(project, screenId, document, library);
 }
 
 export async function retrySave() {

@@ -96,3 +96,27 @@ test("opening the same legacy draft in two tabs migrates it once", async ({ page
   await expect(page.getByRole("region", { name: "Projects" })).toBeVisible();
   await expect(page.getByRole("link", { name: /Recovery — Orbit study/ })).toHaveCount(0);
 });
+
+test("recover the previous checkpoint into a separate project through WebMCP and the editor", async ({ page, context }) => {
+  await ready(page, "/?project=orbit");
+  await patch(page, 221);
+  const first = await page.webmcp.callTool("get_save_status");
+  expect(first.hasPrevious).toBe(false);
+  await patch(page, 155);
+  const second = await page.webmcp.callTool("get_save_status");
+  expect(second.hasPrevious).toBe(true);
+  const recover = revision => page.webmcp.callTool("recover_checkpoint", { revision });
+  expect(await recover(first.storageRevision)).toMatchObject({ isError: true });
+  const checkpoint = await recover(second.storageRevision);
+  expect(checkpoint.title).toBe("Checkpoint — Orbit study");
+  expect(await satelliteX(page)).toBe(155);
+
+  const copy = await context.newPage();
+  await ready(copy, "/?project=" + checkpoint.id);
+  expect(await satelliteX(copy)).toBe(221);
+
+  await page.getByRole("button", { name: "Copy previous checkpoint" }).click();
+  await expect(page.getByRole("heading", { name: "Checkpoint — Orbit study" })).toBeVisible();
+  await expect(page.locator("#agent")).toHaveText("WebMCP tools ready");
+  expect(await satelliteX(page)).toBe(221);
+});

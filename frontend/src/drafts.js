@@ -40,6 +40,11 @@ function draftDeserialize_deserialize(json) {
       ["revision", $json.string],
       ["document", documentDeserialize_deserialize],
       ["previous", $json.option(documentDeserialize_deserialize)],
+      [
+        "previous_library",
+        $json.option($json.vec(componentVariantDeserialize_deserialize)),
+        () => undefined,
+      ],
       ["recovery", $json.option(projectDeserialize_deserialize)],
       [
         "library",
@@ -47,11 +52,12 @@ function draftDeserialize_deserialize(json) {
         () => undefined,
       ],
     ],
-    ([key, revision, document, previous, recovery, library]) => ({
+    ([key, revision, document, previous, previousLibrary, recovery, library]) => ({
       key,
       revision,
       document,
       previous,
+      previousLibrary,
       recovery,
       library,
     }),
@@ -71,6 +77,17 @@ function draftSerialize_serialize(draft, json) {
     json.null();
   } else {
     documentSerialize_serialize(draft.previous, json);
+  }
+  json.key("previous_library");
+  if (draft.previousLibrary == null) {
+    json.null();
+  } else {
+    json.beginArray();
+    for (const item of draft.previousLibrary) {
+      json.element();
+      componentVariantSerialize_serialize(item, json);
+    }
+    json.endArray();
   }
   json.key("recovery");
   if (draft.recovery == null) {
@@ -247,7 +264,7 @@ export function recoveryLibrary(key) {
       cache,
       (cache) => {
         const find = cache.find((record) => record.key === key);
-        return find != null
+        return find != null && find.recovery != null
           ? find.library == null
             ? find.library
             : find.library.map((item) => ({
@@ -258,6 +275,69 @@ export function recoveryLibrary(key) {
       },
       true,
     ) ?? undefined
+  );
+}
+
+export function hasPrevious(key) {
+  return $withBorrow(
+    cache,
+    (cache) => cache.some((record) => record.key === key && record.previous != null),
+    true,
+  );
+}
+
+export function previous(key, expected) {
+  return $withBorrow(
+    cache,
+    (cache) => {
+      const find = cache.find((record) => record.key === key);
+      const result = find != null ? { TAG: "Ok", _0: find } : { TAG: "Err", _0: "No saved draft." };
+      if (result.TAG === "Err") {
+        return result;
+      }
+      const record = result._0;
+      if (record.revision !== expected) {
+        return {
+          TAG: "Err",
+          _0: "The saved draft changed. Reopen the editor to recover its current checkpoint.",
+        };
+      }
+      const option =
+        record.previous == null
+          ? record.previous
+          : {
+              ...record.previous,
+              scene:
+                record.previous.scene == null
+                  ? record.previous.scene
+                  : {
+                      ...record.previous.scene,
+                      layers: record.previous.scene.layers.map((item) => ({ ...item })),
+                      instances: record.previous.scene.instances.map((item) => ({ ...item })),
+                    },
+            };
+      const result$1 =
+        option != null
+          ? { TAG: "Ok", _0: option }
+          : { TAG: "Err", _0: "No previous saved snapshot." };
+      if (result$1.TAG === "Err") {
+        return result$1;
+      }
+      const document = result$1._0;
+      return {
+        TAG: "Ok",
+        _0: [
+          document,
+          record.previousLibrary == null
+            ? record.previousLibrary
+            : record.previousLibrary.map((item) => ({
+                ...item,
+                layers: item.layers.map((item) => ({ ...item })),
+              })),
+        ],
+      };
+    },
+    true,
   );
 }
 
@@ -331,6 +411,13 @@ export async function commit(key, expected, document, title, library) {
                             })),
                           },
                   },
+            previousLibrary:
+              current.previousLibrary == null
+                ? current.previousLibrary
+                : current.previousLibrary.map((item) => ({
+                    ...item,
+                    layers: item.layers.map((item) => ({ ...item })),
+                  })),
             library:
               current.library == null
                 ? current.library
@@ -368,11 +455,21 @@ export async function commit(key, expected, document, title, library) {
                       },
               }
             : undefined;
+        const andThen =
+          current != null
+            ? current.library == null
+              ? current.library
+              : current.library.map((item) => ({
+                  ...item,
+                  layers: item.layers.map((item) => ({ ...item })),
+                }))
+            : undefined;
         next = {
           key: writtenKey,
           revision,
           document: { ...props, scene },
           previous: map,
+          previousLibrary: andThen,
           recovery: current?.recovery,
           library:
             library == null

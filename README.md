@@ -105,3 +105,5 @@ For multi-layer agent edits, call `read_design` for its current revision and the
 The editor saves drafts to IndexedDB and keeps the previous saved snapshot. Existing localStorage drafts are validated and migrated when opened, with the original left in place. If a stale tab tries to save over a newer revision, it saves its edits as a separate **Recovery** project. Open that project from the editor's recovery link or the dashboard.
 
 Agents can use `get_save_status` to check the durable revision or obtain a recovery project ID. If storage fails, the current editor keeps the changes in memory. Use **Retry draft save** or `retry_draft_save` after resolving the storage error.
+
+After two distinct saves, **Copy previous checkpoint** creates a separate project with the earlier snapshot of the current screen. Agents can call `recover_checkpoint` with the `storageRevision` from `get_save_status`. If the saved revision has advanced, reopen the editor before selecting a checkpoint.

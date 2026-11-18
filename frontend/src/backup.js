@@ -17,7 +17,7 @@ import * as Bundle from "../../core/src/bundle.js";
 import { Scene } from "../../core/src/scene.js";
 import * as Drafts from "./drafts.js";
 import { message } from "./lib.js";
-import { $byteLen, $displayJsonError, $fromJson, $next, $toJson } from "@rust-js/std";
+import { $byteLen, $displayJsonError, $fromJson, $iter, $next, $toJson } from "@rust-js/std";
 
 const ProjectBundle = {
   parse(json) {
@@ -64,11 +64,19 @@ function export$(id) {
     return result;
   }
   const project = result._0;
-  const result$1 = saved(project);
+  const result$1 = capture(project);
   if (result$1.TAG === "Err") {
     return result$1;
   }
-  let bundle = result$1._0;
+  return serialize(result$1._0);
+}
+
+function capture(project) {
+  const result = saved(project);
+  if (result.TAG === "Err") {
+    return result;
+  }
+  let bundle = result._0;
   if (bundle == null) {
     const screens =
       project.id === Journey.PROJECT
@@ -107,11 +115,60 @@ function export$(id) {
       library: tmp,
     };
   }
-  const iter = bundle.screens.entries();
+  for (const [index, screen] of bundle.screens.entries()) {
+    const key = Project.screenKey(project, false, index > 0 ? screen.info.id : undefined);
+    const result = Projects.loadDocument(key);
+    if (result.TAG === "Err") {
+      return result;
+    }
+    const scene = result._0?.scene;
+    if (scene != null) {
+      screen.scene = scene;
+    }
+  }
+  return { TAG: "Ok", _0: bundle };
+}
+
+export function restorePrevious(project, screenId, document, library) {
+  const result = capture(project);
+  if (result.TAG === "Err") {
+    return result;
+  }
+  const bundle = result._0;
+  const find = bundle.screens.find((screen) => screen.info.id === screenId);
+  const result$1 =
+    find != null
+      ? { TAG: "Ok", _0: find }
+      : { TAG: "Err", _0: "Screen not found in this project." };
+  if (result$1.TAG === "Err") {
+    return result$1;
+  }
+  const screen = result$1._0;
+  const result$2 =
+    document.scene != null
+      ? { TAG: "Ok", _0: document.scene }
+      : { TAG: "Err", _0: "Previous snapshot has no artboard." };
+  if (result$2.TAG === "Err") {
+    return result$2;
+  }
+  screen.scene = result$2._0;
+  if (library != null) {
+    bundle.library = library;
+  }
+  bundle.title = Array.from(`Checkpoint — ${project.title}`[Symbol.iterator]().take(80)).join("");
+  const result$3 = serialize(bundle);
+  if (result$3.TAG === "Err") {
+    return result$3;
+  }
+  return import$(result$3._0);
+}
+
+function serialize(bundle) {
+  const iter = $iter(bundle.screens);
   let json;
   while (true) {
-    const value = $next(iter);
-    if (value == null) {
+    const screen = $next(iter);
+    if (screen == null) {
       const result = ProjectBundle$1.validate(bundle);
       if (result.TAG === "Err") {
         return result;
@@ -127,17 +184,6 @@ function export$(id) {
         return { TAG: "Err", _0: "Project bundle exceeds 2 MB." };
       }
       break;
-    }
-    const index = value[0];
-    const screen = value[1];
-    const key = Project.screenKey(project, false, index > 0 ? screen.info.id : undefined);
-    const result = Projects.loadDocument(key);
-    if (result.TAG === "Err") {
-      return result;
-    }
-    const scene = result._0?.scene;
-    if (scene != null) {
-      screen.scene = scene;
     }
     const action = screen.info.action;
     const holds = (action) => !screen.scene.layers.some((layer) => layer.id === action.layerId);

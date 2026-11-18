@@ -23,6 +23,8 @@ struct Draft {
     revision: String,
     document: Document,
     previous: Option<Document>,
+    #[serde(default)]
+    previous_library: Option<Vec<ComponentVariant>>,
     recovery: Option<Project>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     library: Option<Vec<ComponentVariant>>,
@@ -168,7 +170,39 @@ pub fn recovery_library(key: &str) -> Option<Vec<ComponentVariant>> {
         cache
             .iter()
             .find(|record| record.key == key)
+            .filter(|record| record.recovery.is_some())
             .and_then(|record| record.library.clone())
+    })
+}
+
+pub fn has_previous(key: &str) -> bool {
+    CACHE.with_borrow(|cache| {
+        cache
+            .iter()
+            .any(|record| record.key == key && record.previous.is_some())
+    })
+}
+
+pub fn previous(
+    key: &str,
+    expected: &str,
+) -> Result<(Document, Option<Vec<ComponentVariant>>), String> {
+    CACHE.with_borrow(|cache| {
+        let record = cache
+            .iter()
+            .find(|record| record.key == key)
+            .ok_or("No saved draft.")?;
+        if record.revision != expected {
+            return Err(
+                "The saved draft changed. Reopen the editor to recover its current checkpoint."
+                    .into(),
+            );
+        }
+        let document = record
+            .previous
+            .clone()
+            .ok_or("No previous saved snapshot.")?;
+        Ok((document, record.previous_library.clone()))
     })
 }
 
@@ -229,6 +263,7 @@ pub async fn commit(
                         revision: revision.clone(),
                         document: document.clone(),
                         previous: current.as_ref().map(|draft| draft.document.clone()),
+                        previous_library: current.as_ref().and_then(|draft| draft.library.clone()),
                         recovery: current.and_then(|draft| draft.recovery),
                         library: library.clone(),
                     }
@@ -238,6 +273,7 @@ pub async fn commit(
                         revision: revision.clone(),
                         document: document.clone(),
                         previous: None,
+                        previous_library: None,
                         recovery: Some(recovery.clone()),
                         library: library.clone(),
                     }

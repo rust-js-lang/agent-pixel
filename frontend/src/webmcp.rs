@@ -147,6 +147,21 @@ pub async fn register_editor_tools() -> Result<bool, &'static JsError> {
             annotations: None,
             execute: Box::new(|_| js::promise(async { tool_result(crate::retry_save().await) })),
         },
+        Tool {
+            name: "recover_checkpoint",
+            description: "Copy this screen's previous saved snapshot into a separate project. Pass the current storageRevision from get_save_status.",
+            input_schema: parse(REVISION_SCHEMA),
+            annotations: None,
+            execute: Box::new(|input| js::promise(async move {
+                let result = match decode(input, "Provide the current storage revision.") {
+                    Ok(Revision { revision }) => crate::recover_previous(&revision).await.and_then(|project| {
+                        serde_json::to_string(&project).map_err(|error| error.to_string())
+                    }),
+                    Err(error) => Err(error),
+                };
+                tool_result(result)
+            })),
+        },
         history_tool("undo_edit", "Undo the latest transaction in this editor session.", "undo"),
         history_tool("redo_edit", "Redo the next transaction in this editor session.", "redo"),
         Tool {

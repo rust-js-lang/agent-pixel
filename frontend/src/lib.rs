@@ -396,6 +396,16 @@ async fn persist_draft() -> Result<(), String> {
             editor.pinned_library.clone(),
         )
     });
+    let library = if library.is_none()
+        && document
+            .scene
+            .as_ref()
+            .is_some_and(|scene| !scene.instances.is_empty())
+    {
+        components::library().ok()
+    } else {
+        library
+    };
     match drafts::commit(key, revision, document, &title, library).await {
         Ok(drafts::Commit::Saved(revision)) => {
             EDITOR.with_borrow_mut(|editor| {
@@ -434,10 +444,27 @@ fn save_status() -> Result<String, String> {
         };
         serde_json::to_string(&serde_json::json!({
             "state": state, "storageRevision": editor.storage_revision,
-            "recovery": editor.recovery, "message": editor.status
+            "recovery": editor.recovery, "message": editor.status,
+            "hasPrevious": drafts::has_previous(&editor.storage_key())
         }))
         .map_err(|error| error.to_string())
     })
+}
+
+async fn recover_previous(expected: &str) -> Result<Project, String> {
+    let (key, project, screen_id) = EDITOR.with_borrow(|editor| {
+        (
+            editor.storage_key(),
+            editor.project.clone(),
+            editor
+                .screen
+                .as_ref()
+                .map_or_else(|| "main".into(), |screen| screen.id.clone()),
+        )
+    });
+    drafts::reload_cache().await?;
+    let (document, library) = drafts::previous(&key, expected)?;
+    backup::restore_previous(&project, &screen_id, document, library)
 }
 
 async fn retry_save() -> Result<String, String> {

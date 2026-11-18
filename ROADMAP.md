@@ -8,7 +8,7 @@ The release blockers are recoverable project storage, dependable editing of real
 
 ### M1 checkpoint
 
-The dashboard and WebMCP can export and restore a versioned project bundle with the current artboards, prototype links, and a pinned component library. The editor supports attributed undo and redo within an open session. Agents can submit an atomic batch at a known revision and undo or redo the entire batch. Draft saves now use IndexedDB revisions and retain the previous committed snapshot. Opening a legacy draft migrates a validated copy, and a concurrent edit creates a durable recovery project. An interrupted write can be retried from the current editor. Catalog and bundle storage migration, recovery of the previous snapshot from the UI and WebMCP, quota recovery after closing the tab, and asset support are still open.
+The dashboard and WebMCP can export and restore a versioned project bundle with the current artboards, prototype links, and a pinned component library. The editor supports attributed undo and redo within an open session. Agents can submit an atomic batch at a known revision and undo or redo the entire batch. Draft saves now use IndexedDB revisions and retain the previous committed snapshot. Opening a legacy draft migrates a validated copy, and a concurrent edit creates a durable recovery project. An interrupted write can be retried from the current editor. People and agents can copy the previous saved snapshot into a separate project, with the recorded component library when available. Catalog and bundle storage migration, quota recovery after closing the tab, and asset support are still open.
 
 ## Target workflow
 
