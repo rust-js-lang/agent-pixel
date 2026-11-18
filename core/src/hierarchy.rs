@@ -10,6 +10,8 @@ pub struct LayerGroup {
     pub id: String,
     pub name: String,
     pub children: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame: Option<crate::frames::Frame>,
 }
 
 #[derive(Serialize)]
@@ -33,6 +35,9 @@ impl Scene {
             }
         }
         for group in &self.groups {
+            if let Some(frame) = &group.frame {
+                frame.validate(self.board)?;
+            }
             if !crate::scene::valid_id(&group.id)
                 || !crate::bundle::valid_title(&group.name)
                 || !ids.insert(group.id.as_str())
@@ -99,6 +104,7 @@ impl Scene {
         id: String,
         name: String,
         parent_id: Option<String>,
+        frame: Option<crate::frames::Frame>,
     ) -> Result<String, &'static str> {
         if !crate::bundle::valid_title(&name) {
             return Err("Enter a group name between 1 and 80 characters.");
@@ -107,6 +113,7 @@ impl Scene {
             id: id.clone(),
             name,
             children: Vec::new(),
+            frame,
         });
         self.move_layer_node(&id, parent_id.as_deref())?;
         Ok(id)
@@ -175,7 +182,17 @@ impl Scene {
         let mut rank = HashMap::new();
         let mut nodes = HashMap::new();
         for group in &self.groups {
-            nodes.insert(group.id.as_str(), (group.name.clone(), "group"));
+            nodes.insert(
+                group.id.as_str(),
+                (
+                    group.name.clone(),
+                    if group.frame.is_some() {
+                        "frame"
+                    } else {
+                        "group"
+                    },
+                ),
+            );
             for child in &group.children {
                 parents.insert(child.as_str(), group.id.as_str());
             }
@@ -213,7 +230,8 @@ impl Scene {
     }
 
     fn layer_name(&self, layer: &crate::scene::Layer) -> String {
-        self.image_for_layer(layer).map_or_else(|| layer.name(), |asset| asset.image.name.clone())
+        self.image_for_layer(layer)
+            .map_or_else(|| layer.name(), |asset| asset.image.name.clone())
     }
 
     pub(crate) fn normalize_layer_order(&mut self) {
@@ -253,7 +271,7 @@ fn rows(
 
 fn paint_order(rows: &[LayerNode], order: &mut HashMap<String, usize>, index: &mut usize) {
     for row in rows.iter().rev() {
-        if row.kind != "group" && row.kind != "instance" {
+        if !matches!(row.kind.as_str(), "group" | "instance" | "frame") {
             order.insert(row.id.clone(), *index);
             *index += 1;
         } else {

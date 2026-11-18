@@ -32,7 +32,8 @@ function projectCard(project) {
     scene$1 != null && Scene.validate(scene$1).TAG === "Ok"
       ? scene$1
       : Project.initialScene(project);
-  const count = scene.layers.length;
+  const count =
+    (scene.layers.length + scene.groups.filter((group) => group.frame != null).length) >>> 0;
   let label;
   switch (count) {
     case 0:
@@ -45,9 +46,7 @@ function projectCard(project) {
       label = `${count} layers`;
       break;
   }
-  const preview = scene.layers.map((layer) =>
-    View.previewLayer(layer, Scene.imageForLayer(scene, layer), scene.board),
-  );
+  const preview = View.artwork(scene, false);
   const ratio = View.boardRatio(scene.board);
   const style = {
     aspectRatio: View.boardAspect(scene.board),

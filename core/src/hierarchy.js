@@ -4,6 +4,7 @@
 import { Layer, Scene as Scene$1 } from "./scene.js";
 import * as Scene$2 from "./scene.js";
 import * as Bundle from "./bundle.js";
+import { Frame, frameDeserialize_deserialize, frameSerialize_serialize } from "./frames.js";
 import {
   $KeyMap,
   $add,
@@ -27,8 +28,9 @@ export function layerGroupDeserialize_deserialize(json) {
       ["id", $json.string],
       ["name", $json.string],
       ["children", $json.vec($json.string)],
+      ["frame", $json.option(frameDeserialize_deserialize), () => undefined],
     ],
-    ([id, name, children]) => ({ id, name, children }),
+    ([id, name, children, frame]) => ({ id, name, children, frame }),
   );
 }
 
@@ -45,6 +47,10 @@ export function layerGroupSerialize_serialize(layerGroup, json) {
     json.string(item);
   }
   json.endArray();
+  if (layerGroup.frame != null) {
+    json.key("frame");
+    frameSerialize_serialize(layerGroup.frame, json);
+  }
   json.endObject();
 }
 
@@ -78,6 +84,12 @@ export const Scene = {
       }
     }
     for (const group of scene.groups) {
+      if (group.frame != null) {
+        const result = Frame.validate(group.frame, scene.board);
+        if (result.TAG === "Err") {
+          return result;
+        }
+      }
       if (!Scene$2.validId(group.id) || !Bundle.validTitle(group.name) || !$add(ids, group.id)) {
         return { TAG: "Err", _0: "Invalid layer group." };
       }
@@ -132,7 +144,7 @@ export const Scene = {
     }
   },
 
-  createGroup(scene, id, name, parentId) {
+  createGroup(scene, id, name, parentId, frame) {
     if (!Bundle.validTitle(name)) {
       return { TAG: "Err", _0: "Enter a group name between 1 and 80 characters." };
     }
@@ -140,6 +152,7 @@ export const Scene = {
       id,
       name,
       children: [],
+      frame: frame ?? undefined,
     });
     const result = Scene.moveLayerNode(scene, id, parentId);
     if (result.TAG === "Err") {
@@ -217,7 +230,7 @@ export const Scene = {
     const rank = new Map();
     const nodes = new Map();
     for (const group of scene.groups) {
-      nodes.set(group.id, [group.name, "group"]);
+      nodes.set(group.id, [group.name, group.frame != null ? "frame" : "group"]);
       for (const child of group.children) {
         parents.set(child, group.id);
       }
@@ -301,7 +314,7 @@ function rows(parent, tree, nodes) {
 function paintOrder(rows, order, index) {
   for (let i = rows.length - 1; i >= 0; i--) {
     const row = rows[i];
-    if (row.kind !== "group" && row.kind !== "instance") {
+    if (row.kind !== "group" && row.kind !== "instance" && row.kind !== "frame") {
       order.set(row.id, index.value);
       index.value = (index.value + 1) >>> 0;
     } else {

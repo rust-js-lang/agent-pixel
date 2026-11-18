@@ -111,6 +111,10 @@ export const Editor = {
             groups: editor.seed.groups.map((item) => ({
               ...item,
               children: item.children.slice(),
+              frame:
+                item.frame == null
+                  ? item.frame
+                  : { ...item.frame, bounds: { ...item.frame.bounds } },
             })),
           }) ?? Project.initialScene(editor.project)
     );
@@ -631,7 +635,14 @@ async function commitBatch(batch, author) {
 
 export function applyEdit(edit) {
   const revision = $withBorrow(editor, (editor) => editor.revision, true);
-  const edit$1 = edit.TAG === "Patch" ? { ...edit, layer: { ...edit.layer } } : edit;
+  const edit$1 =
+    edit.TAG === "Patch"
+      ? { ...edit, layer: { ...edit.layer } }
+      : edit.TAG === "CreateFrame"
+        ? { ...edit, frame: { ...edit.frame, bounds: { ...edit.frame.bounds } } }
+        : edit.TAG === "SetFrame"
+          ? { ...edit, frame: { ...edit.frame, bounds: { ...edit.frame.bounds } } }
+          : edit;
   (async () => {
     const value = await commitBatch(
       {
@@ -885,6 +896,10 @@ async function persistDraft() {
                   groups: editor.document.scene.groups.map((item) => ({
                     ...item,
                     children: item.children.slice(),
+                    frame:
+                      item.frame == null
+                        ? item.frame
+                        : { ...item.frame, bounds: { ...item.frame.bounds } },
                   })),
                 },
         },
@@ -1023,6 +1038,10 @@ export function exportUnsaved() {
               groups: editor.document.scene.groups.map((item) => ({
                 ...item,
                 children: item.children.slice(),
+                frame:
+                  item.frame == null
+                    ? item.frame
+                    : { ...item.frame, bounds: { ...item.frame.bounds } },
               })),
             };
       const result =

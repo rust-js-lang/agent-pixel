@@ -19,17 +19,18 @@ fn project_card(project: &Project) -> JSX::Element {
         })
         .filter(|scene| scene.validate().is_ok())
         .unwrap_or_else(|| project.initial_scene());
-    let count = scene.layers.len();
+    let count = scene.layers.len()
+        + scene
+            .groups
+            .iter()
+            .filter(|group| group.frame.is_some())
+            .count();
     let label = match count {
         0 => "Empty artboard".into(),
         1 => "1 layer".into(),
         _ => format!("{count} layers"),
     };
-    let preview = scene
-        .layers
-        .iter()
-        .map(|layer| view::preview_layer(layer, scene.image_for_layer(layer), scene.board))
-        .collect::<Vec<_>>();
+    let preview = view::artwork(&scene, false);
     let ratio = view::board_ratio(scene.board);
     let style = CSSProperties::new()
         .aspect_ratio(view::board_aspect(scene.board))

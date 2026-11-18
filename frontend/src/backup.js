@@ -88,7 +88,12 @@ export const ProjectSource = {
             layerIds: item.layerIds.slice(),
           })),
           assets: find.scene.assets.slice(),
-          groups: find.scene.groups.map((item) => ({ ...item, children: item.children.slice() })),
+          groups: find.scene.groups.map((item) => ({
+            ...item,
+            children: item.children.slice(),
+            frame:
+              item.frame == null ? item.frame : { ...item.frame, bounds: { ...item.frame.bounds } },
+          })),
         }
       : Scene.blank();
   },

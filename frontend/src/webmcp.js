@@ -176,6 +176,10 @@ const REVISION_SCHEMA =
   '{"type":"object","required":["revision"],"additionalProperties":false,"properties":{"revision":{"type":"string"}}}';
 const BATCH_SCHEMA = `{
     "type":"object","required":["revision","edits"],"additionalProperties":false,
+    "$defs":{"frame":{"type":"object","additionalProperties":false,"required":["bounds","fill","clip"],"properties":{
+        "bounds":{"type":"object","additionalProperties":false,"required":["x","y","width","height"],"properties":{"x":{"type":"integer","minimum":0},"y":{"type":"integer","minimum":0},"width":{"type":"integer","minimum":1},"height":{"type":"integer","minimum":1}}},
+        "fill":{"type":"string","pattern":"^#[0-9A-Fa-f]{6}$"},"clip":{"type":"boolean"}
+    }}},
     "properties":{
         "revision":{"type":"string","description":"Current revision from read_design"},
         "edits":{"type":"array","minItems":1,"maxItems":100,"items":{"oneOf":[
@@ -192,8 +196,14 @@ const BATCH_SCHEMA = `{
             {"type":"object","required":["op","name"],"additionalProperties":false,"properties":{
                 "op":{"const":"create_group"},"name":{"type":"string","minLength":1,"maxLength":80},"parentId":{"type":["string","null"]}
             }},
+            {"type":"object","required":["op","name","frame"],"additionalProperties":false,"properties":{
+                "op":{"const":"create_frame"},"name":{"type":"string","minLength":1,"maxLength":80},"parentId":{"type":["string","null"]},"frame":{"$ref":"#/$defs/frame"}
+            }},
+            {"type":"object","required":["op","id","frame"],"additionalProperties":false,"properties":{
+                "op":{"const":"set_frame"},"id":{"type":"string"},"frame":{"$ref":"#/$defs/frame"}
+            }},
             {"type":"object","required":["op","id","parentId"],"additionalProperties":false,"properties":{
-                "op":{"const":"set_layer_parent"},"id":{"type":"string"},"parentId":{"type":["string","null"],"description":"Group ID, or null to move to the top level"}
+                "op":{"const":"set_layer_parent"},"id":{"type":"string"},"parentId":{"type":["string","null"],"description":"Group or frame ID, or null to move to the top level"}
             }},
             {"type":"object","required":["op","id","name"],"additionalProperties":false,"properties":{
                 "op":{"const":"rename_group"},"id":{"type":"string"},"name":{"type":"string","minLength":1,"maxLength":80}

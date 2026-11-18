@@ -106,6 +106,12 @@ Open **Artboard size** in the inspector to set the width and height in artboard 
 
 Use `{ op: "resize_artboard", width, height }` in `apply_edits` to resize alongside other edits. Read the current size from `read_design.board`. Dimensions are saved with each screen and follow it into backups and prototypes. Older projects retain the default 480 × 600 px.
 
+## Nested frames
+
+Use **Frame +** in the toolbar, then select the frame to edit its position, size, fill, and clipping in the inspector. Move layers or another frame into it with **Parent group**. Moving a frame moves its descendants. Resizing the frame preserves their artboard coordinates and updates the clipping boundary.
+
+Agents use `create_frame` and `set_frame` in `apply_edits`. Both take a `frame` object with `bounds` (x, y, width, height), a six-digit hex `fill`, and a boolean `clip`. Coordinates are relative to the artboard. Use `set_layer_parent` and `read_layer_tree` for nesting. Frames and their children are included in undo, draft saves, and portable bundles.
+
 ## Canvas and layer hierarchy
 
 The left rail toggles between **File** for screens and layers and **Assets** for image and component placement. The Design inspector stays on the right. The design toolbar floats at the bottom of the canvas, and zoom stays in the upper corner. The canvas uses a compact, outlined arrow cursor. The canvas and long panels scroll independently. Agents can open either panel with `show_workspace_panel`. On phones the Layers panel and inspector sit above and below the canvas.

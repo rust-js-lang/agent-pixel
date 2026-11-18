@@ -32,8 +32,9 @@ import {
   dimensionsDefault_default,
 } from "../../core/src/lib.js";
 import { useState } from "react";
-import { Scene } from "../../core/src/hierarchy.js";
-import { Layer, Scene as Scene$1 } from "../../core/src/scene.js";
+import { Scene } from "../../core/src/frames.js";
+import { Scene as Scene$1 } from "../../core/src/hierarchy.js";
+import { Layer, Scene as Scene$2 } from "../../core/src/scene.js";
 import * as Backup from "./backup.js";
 import * as Components from "./components.js";
 import * as Drafts from "./drafts.js";
@@ -87,7 +88,7 @@ function percent(value, extent) {
   return `${$displayF64((value / extent) * 100)}%`;
 }
 
-function beginDrag(layer, dimensions, event) {
+function beginDrag(layer, dimensions, clip, event) {
   if (event.button !== 0) {
     return;
   }
@@ -106,6 +107,7 @@ function beginDrag(layer, dimensions, event) {
         originX: event.clientX,
         originY: event.clientY,
         board: dimensions,
+        clip: clip == null ? clip : { ...clip },
         scaleX: dimensions.width / bounds.width,
         scaleY: dimensions.height / bounds.height,
       };
@@ -115,17 +117,26 @@ function beginDrag(layer, dimensions, event) {
   select(layer.id);
 }
 
-function setPosition(event, x, y, board) {
+function setPosition(event, x, y, drag) {
   const style = event.currentTarget.style;
-  style.left = percent(x, board.width);
-  style.top = percent(y, board.height);
+  style.left = percent(x, drag.board.width);
+  style.top = percent(y, drag.board.height);
+  style.clipPath = clipStyle(
+    {
+      x,
+      y,
+      width: drag.width,
+      height: drag.height,
+    },
+    drag.clip == null ? drag.clip : { ...drag.clip },
+  );
 }
 
 function moveDrag(event) {
   $withBorrow(drag, (drag) => {
     if (drag != null) {
       const [x, y] = Drag.position(drag, event);
-      setPosition(event, x, y, drag.board);
+      setPosition(event, x, y, drag);
     }
   });
 }
@@ -133,7 +144,7 @@ function moveDrag(event) {
 function endDrag(event, commit) {
   const drag$1 = $cellReplace($borrowMut(drag));
   if (drag$1 != null) {
-    setPosition(event, drag$1.x, drag$1.y, drag$1.board);
+    setPosition(event, drag$1.x, drag$1.y, drag$1);
     const [x, y] = Drag.position(drag$1, event);
     if (commit && (x !== drag$1.x || y !== drag$1.y)) {
       edit({
@@ -145,7 +156,30 @@ function endDrag(event, commit) {
   }
 }
 
-function layerStyle(layer, board) {
+function clipStyle(bounds, clip) {
+  if (clip == null) {
+    return "none";
+  }
+  clip = { ...clip };
+  if (clip.width === 0 || clip.height === 0) {
+    return "inset(50%)";
+  }
+  const top = $clamp((clip.y - bounds.y) | 0, 0, bounds.height);
+  const left = $clamp((clip.x - bounds.x) | 0, 0, bounds.width);
+  const right = $clamp(
+    (((((bounds.x + bounds.width) | 0) - clip.x) | 0) - clip.width) | 0,
+    0,
+    (bounds.width - left) | 0,
+  );
+  const bottom = $clamp(
+    (((((bounds.y + bounds.height) | 0) - clip.y) | 0) - clip.height) | 0,
+    0,
+    (bounds.height - top) | 0,
+  );
+  return `inset(${percent(top, bounds.height)} ${percent(right, bounds.width)} ${percent(bottom, bounds.height)} ${percent(left, bounds.width)})`;
+}
+
+function layerStyle(layer, board, clip) {
   return {
     left: percent(layer.x, board.width),
     top: percent(layer.y, board.height),
@@ -154,6 +188,15 @@ function layerStyle(layer, board) {
     background: layer.kind === "text" ? "transparent" : layer.fill,
     borderRadius: layer.kind === "ellipse" ? "50%" : "0",
     color: layer.fill,
+    clipPath: clipStyle(
+      {
+        x: layer.x,
+        y: layer.y,
+        width: layer.width,
+        height: layer.height,
+      },
+      clip,
+    ),
     fontSize:
       layer.fontSize != null ? `${$displayF64((layer.fontSize / board.width) * 100)}cqw` : "",
   };
@@ -174,26 +217,27 @@ function layerContent(layer, image) {
   }
 }
 
-export function previewLayer(layer, image, board) {
+function previewLayer(layer, image, board, clip) {
   const class$ =
     layer.kind === "text"
       ? `${ARTBOARD["preview-layer"]} ${ARTBOARD["preview-text"]}`
       : ARTBOARD["preview-layer"];
   return (
-    <div key={layer.id} className={class$} style={layerStyle(layer, board)}>
+    <div key={layer.id} className={class$} style={layerStyle(layer, board, clip)}>
       {layerContent(layer, image)}
     </div>
   );
 }
 
-function shape(layer, linked, image, board) {
+function shape(layer, linked, image, board, clip) {
   const captured = { ...layer };
   const id = layer.id;
-  const styles = layerStyle(layer, board);
+  const styles = layerStyle(layer, board, clip);
   const class$ =
     layer.kind === "text"
       ? `${EDITOR_STYLES.shape} ${EDITOR_STYLES["text-layer"]}`
       : EDITOR_STYLES.shape;
+  const clip$1 = clip == null ? clip : { ...clip };
   return (
     <button
       key={layer.id}
@@ -203,7 +247,7 @@ function shape(layer, linked, image, board) {
       onClick={() => select(id)}
       onPointerDown={(event) => {
         if (!linked) {
-          beginDrag(captured, board, event);
+          beginDrag(captured, board, clip$1 == null ? clip$1 : { ...clip$1 }, event);
         }
       }}
       onPointerMove={moveDrag}
@@ -215,15 +259,66 @@ function shape(layer, linked, image, board) {
   );
 }
 
+export function artwork(scene, interactive) {
+  const layers = new Map(scene.layers.values().map((layer) => [layer.id, layer]));
+  const frames = new Map(
+    scene.groups
+      .values()
+      .map((group) => (group.frame != null ? [group.id, [group, group.frame]] : undefined))
+      .filter((item) => item != null),
+  );
+  const board = scene.board;
+  return Scene.paintNodes(scene)
+    .map((node) => {
+      const layer = layers.get(node.id);
+      if (layer != null) {
+        const image = Scene$2.imageForLayer(scene, layer);
+        return interactive
+          ? shape(layer, Scene$2.instanceForLayer(scene, layer.id) != null, image, board, node.clip)
+          : previewLayer(layer, image, board, node.clip);
+      }
+      const get = frames.get(node.id);
+      if (get != null) {
+        const [group, frame] = get;
+        const bounds = { ...frame.bounds };
+        const style = {
+          left: percent(bounds.x, board.width),
+          top: percent(bounds.y, board.height),
+          width: percent(bounds.width, board.width),
+          height: percent(bounds.height, board.height),
+          background: frame.fill,
+          clipPath: clipStyle(bounds, node.clip),
+        };
+        const id = group.id;
+        return interactive ? (
+          <button
+            key={group.id}
+            type="button"
+            aria-label={`Select frame ${group.name}`}
+            className={EDITOR_STYLES.shape}
+            style={style}
+            onClick={() => select(id)}
+          />
+        ) : (
+          <div key={group.id} className={ARTBOARD["preview-layer"]} style={style} />
+        );
+      }
+    })
+    .filter((item) => item != null);
+}
+
 function LayerRow({ node, selected }) {
   const [expanded, setExpanded] = useState(true);
-  const container = node.kind === "group" || node.kind === "instance";
+  const container = node.kind === "group" || node.kind === "frame" || node.kind === "instance";
   const id = node.id;
   const name = node.name;
   let icon;
   switch (node.kind) {
     case "group":
       icon = "▱";
+      break;
+    case "frame":
+      icon = "▣";
       break;
     case "instance":
       icon = "◇";
@@ -280,7 +375,7 @@ function LayerRow({ node, selected }) {
 }
 
 function layerPanel(scene, selected, disabled) {
-  const rows = (scene != null ? Scene.layerTree(scene) : undefined) ?? [];
+  const rows = (scene != null ? Scene$1.layerTree(scene) : undefined) ?? [];
   const nodes = rows.map((node) => <LayerRow key={node.id} node={node} selected={selected} />);
   return (
     <div id="layers" className={EDITOR_STYLES.layers}>
@@ -311,9 +406,9 @@ function layerPanel(scene, selected, disabled) {
 }
 
 function parentPicker(scene, id, disabled) {
-  const value = Scene.parentGroup(scene, id) ?? "";
+  const value = Scene$1.parentGroup(scene, id) ?? "";
   const options = scene.groups
-    .filter((group) => Scene.isValidParent(scene, id, group.id))
+    .filter((group) => Scene$1.isValidParent(scene, id, group.id))
     .map((group) => (
       <option key={group.id} value={group.id}>
         {group.name}
@@ -340,6 +435,7 @@ function parentPicker(scene, id, disabled) {
 function groupInspector(group, disabled) {
   const id = group.id;
   const renameId = id;
+  const frame = group.frame != null ? frameInspector(id, group.frame, disabled) : undefined;
   return (
     <>
       <h2>{group.name}</h2>
@@ -365,12 +461,81 @@ function groupInspector(group, disabled) {
           Rename
         </button>
       </form>
+      {frame}
       <p>
         <button type="button" disabled={disabled} onClick={() => applyEdit({ TAG: "Ungroup", id })}>
-          Ungroup
+          {group.frame != null ? "Remove frame, keep layers" : "Ungroup"}
         </button>
       </p>
     </>
+  );
+}
+
+function frameInspector(id, frame, disabled) {
+  const bounds = { ...frame.bounds };
+  const key = `${id}-${bounds.x}-${bounds.y}-${bounds.width}-${bounds.height}-${frame.fill}-${frame.clip}`;
+  const fields = [
+    ["x", "X", bounds.x, 0],
+    ["y", "Y", bounds.y, 0],
+    ["width", "Width", bounds.width, 1],
+    ["height", "Height", bounds.height, 1],
+  ].map(([name, label, value, min]) => (
+    <label key={name}>
+      {label}
+      <input
+        type="number"
+        name={name}
+        min={min}
+        max={MAX_ARTBOARD_SIZE}
+        defaultValue={value}
+        required
+        disabled={disabled}
+      />
+    </label>
+  ));
+  return (
+    <form
+      key={key}
+      aria-label="Frame geometry"
+      action={(data) => {
+        function number(key) {
+          const value = data.get(key);
+          if (typeof value === "string") {
+            const result = $parseInt(value, -2147483648, 2147483647);
+            return result.TAG === "Ok" ? result._0 : undefined;
+          }
+        }
+        const x = number("x");
+        const y = number("y");
+        const width = number("width");
+        const height = number("height");
+        const fill = data.get("fill");
+        if (x != null && y != null && width != null && height != null && typeof fill === "string") {
+          applyEdit({
+            TAG: "SetFrame",
+            id,
+            frame: {
+              bounds: { x, y, width, height },
+              fill,
+              clip: data.has("clip"),
+            },
+          });
+        }
+      }}
+    >
+      {fields}
+      <label>
+        Fill
+        <input type="color" name="fill" defaultValue={frame.fill} disabled={disabled} />
+      </label>
+      <label>
+        <input type="checkbox" name="clip" defaultChecked={frame.clip} disabled={disabled} />
+        Clip children
+      </label>
+      <button type="submit" disabled={disabled}>
+        Update frame
+      </button>
+    </form>
   );
 }
 
@@ -836,18 +1001,23 @@ export function prototype(editor) {
   const screen = $unwrap(editor.screen, "Prototype screen");
   const scene = editor.document.scene;
   const board = scene?.board ?? dimensionsDefault_default();
-  const map = (scene) =>
-    scene.layers.map((layer) => previewLayer(layer, Scene$1.imageForLayer(scene, layer), board));
-  const layers = scene != null ? map(scene) : undefined;
+  const layers = scene != null ? artwork(scene, false) : undefined;
   const action = $unwrap(screen.action, "Prototype action");
   const source =
     scene != null ? scene.layers.find((layer) => layer.id === action.layerId) : undefined;
-  function map$1(layer) {
+  const node =
+    scene != null ? Scene.paintNodes(scene).find((node) => node.id === action.layerId) : undefined;
+  const clip = node != null ? (node.clip == null ? node.clip : { ...node.clip }) : undefined;
+  function map(layer) {
     const placement = {
       left: percent(layer.x, board.width),
       top: percent(layer.y, board.height),
       width: percent(layer.width, board.width),
       height: percent(layer.height, board.height),
+      clipPath: clipStyle(
+        { x: layer.x, y: layer.y, width: layer.width, height: layer.height },
+        clip == null ? clip : { ...clip },
+      ),
     };
     return (
       <a
@@ -858,7 +1028,7 @@ export function prototype(editor) {
       />
     );
   }
-  const hotspot = source != null ? map$1(source) : undefined;
+  const hotspot = source != null ? map(source) : undefined;
   const className = SHELL.header;
   const className$1 = SHELL.brand;
   const className$2 = JOURNEY["journey-preview"];
@@ -907,21 +1077,14 @@ export function editor(editor) {
   const selected = editor.selected;
   const scene = editor.document.scene;
   const board = scene?.board ?? dimensionsDefault_default();
-  const shapeList = layers.map((layer) =>
-    shape(
-      layer,
-      (scene != null ? Scene$1.instanceForLayer(scene, layer.id) : undefined) != null,
-      scene != null ? Scene$1.imageForLayer(scene, layer) : undefined,
-      board,
-    ),
-  );
+  const shapeList = scene != null ? artwork(scene, true) : undefined;
   const disabled = editor.busy || editor.recovery != null || editor.screenRemoved || scene == null;
   const selectedLayer = layers.find((layer) => layer.id === selected);
   const group = scene != null ? scene.groups.find((group) => group.id === selected) : undefined;
   const instance =
     scene != null
       ? (scene.instances.find((instance) => instance.id === selected) ??
-        (selectedLayer != null ? Scene$1.instanceForLayer(scene, selectedLayer.id) : undefined))
+        (selectedLayer != null ? Scene$2.instanceForLayer(scene, selectedLayer.id) : undefined))
       : undefined;
   let properties;
   if (group != null) {
@@ -932,7 +1095,7 @@ export function editor(editor) {
     properties = inspector(
       selectedLayer,
       editor.fieldsVersion,
-      scene != null ? Scene$1.imageForLayer(scene, selectedLayer) : undefined,
+      scene != null ? Scene$2.imageForLayer(scene, selectedLayer) : undefined,
       board,
     );
   } else {
@@ -1016,6 +1179,8 @@ export function editor(editor) {
   const className$14 = CANVAS["canvas-toolbar"];
   const className$15 = EDITOR_STYLES.tools;
   const captured = board.width;
+  const captured$1 = board.height;
+  const captured$2 = board.width;
   const className$16 = CANVAS["zoom-tools"];
   const disabled$1 = editor.zoom <= Zoom.MIN;
   const className$17 = CANVAS["zoom-value"];
@@ -1118,6 +1283,30 @@ export function editor(editor) {
               >
                 Delete layer
               </button>
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => {
+                  const width = Math.min(240, captured);
+                  const height = Math.min(180, captured$1);
+                  applyEdit({
+                    TAG: "CreateFrame",
+                    name: "Frame",
+                    frame: {
+                      bounds: {
+                        x: Math.min(40, (captured - width) | 0),
+                        y: Math.min(40, (captured$1 - height) | 0),
+                        width,
+                        height,
+                      },
+                      fill: "#ffffff",
+                      clip: true,
+                    },
+                  });
+                }}
+              >
+                ▣ Frame +
+              </button>
               <button id="rect" disabled={disabled} onClick={() => add("rectangle")}>
                 {"▢  Rectangle +"}
               </button>
@@ -1131,7 +1320,7 @@ export function editor(editor) {
                     kind: "text",
                     text: "Label",
                     fontSize: 20,
-                    width: Math.min(170, captured),
+                    width: Math.min(170, captured$2),
                     height: 32,
                     fill: "#20231f",
                   })

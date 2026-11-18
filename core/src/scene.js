@@ -9,7 +9,13 @@ import {
   imagePlacementSerialize_serialize,
 } from "./assets.js";
 import {
+  Frame,
   Scene as Scene$1,
+  frameDeserialize_deserialize,
+  frameSerialize_serialize,
+} from "./frames.js";
+import {
+  Scene as Scene$2,
   layerGroupDeserialize_deserialize,
   layerGroupSerialize_serialize,
 } from "./hierarchy.js";
@@ -453,6 +459,17 @@ function placedLayers(variant, id, x, y, fit, board) {
   };
 }
 
+export function validFill(fill) {
+  const stripPrefix = $stripPrefix(fill, "#");
+  return (
+    stripPrefix != null &&
+    $byteLen(stripPrefix) === 6 &&
+    $utf8Bytes(stripPrefix).every(
+      (b) => (b >= 48 && b <= 57) || (b >= 65 && b <= 70) || (b >= 97 && b <= 102),
+    )
+  );
+}
+
 export function validId(id) {
   return (
     id !== "" &&
@@ -487,46 +504,38 @@ export const Layer = {
 
   validate(layer, board) {
     if (
-      layer.kind === "ellipse" ||
-      layer.kind === "rectangle" ||
-      layer.kind === "text" ||
-      layer.kind === "image"
+      (layer.kind !== "ellipse" &&
+        layer.kind !== "rectangle" &&
+        layer.kind !== "text" &&
+        layer.kind !== "image") ||
+      !validFill(layer.fill)
     ) {
-      const stripPrefix = $stripPrefix(layer.fill, "#");
-      if (
-        stripPrefix != null &&
-        $byteLen(stripPrefix) === 6 &&
-        $utf8Bytes(stripPrefix).every(
-          (b) => (b >= 48 && b <= 57) || (b >= 65 && b <= 70) || (b >= 97 && b <= 102),
-        )
-      ) {
-        if ((layer.kind === "image") !== (layer.imageId != null)) {
-          return { TAG: "Err", _0: "Image layers need an asset reference." };
-        }
-        if (layer.kind === "text") {
-          if (
-            layer.text == null ||
-            $trim(layer.text) === "" ||
-            $byteLen(layer.text) > 512 ||
-            layer.fontSize == null ||
-            !(8 <= layer.fontSize) ||
-            !(layer.fontSize <= 96)
-          ) {
-            return { TAG: "Err", _0: "Text needs content and a font size from 8 to 96." };
-          }
-        } else if (layer.text != null || layer.fontSize != null) {
-          return { TAG: "Err", _0: "Text properties require a text layer." };
-        }
-        if (!Dimensions.fits(board, layer.x, layer.y, layer.width, layer.height)) {
-          return { TAG: "Err", _0: "Keep the entire shape inside the artboard." };
-        }
-        if (!validId(layer.id)) {
-          return { TAG: "Err", _0: "Invalid layer ID." };
-        }
-        return { TAG: "Ok" };
-      }
+      return { TAG: "Err", _0: "Choose a shape and a six-digit hex fill." };
     }
-    return { TAG: "Err", _0: "Choose a shape and a six-digit hex fill." };
+    if ((layer.kind === "image") !== (layer.imageId != null)) {
+      return { TAG: "Err", _0: "Image layers need an asset reference." };
+    }
+    if (layer.kind === "text") {
+      if (
+        layer.text == null ||
+        $trim(layer.text) === "" ||
+        $byteLen(layer.text) > 512 ||
+        layer.fontSize == null ||
+        !(8 <= layer.fontSize) ||
+        !(layer.fontSize <= 96)
+      ) {
+        return { TAG: "Err", _0: "Text needs content and a font size from 8 to 96." };
+      }
+    } else if (layer.text != null || layer.fontSize != null) {
+      return { TAG: "Err", _0: "Text properties require a text layer." };
+    }
+    if (!Dimensions.fits(board, layer.x, layer.y, layer.width, layer.height)) {
+      return { TAG: "Err", _0: "Keep the entire shape inside the artboard." };
+    }
+    if (!validId(layer.id)) {
+      return { TAG: "Err", _0: "Invalid layer ID." };
+    }
+    return { TAG: "Ok" };
   },
 };
 
@@ -608,7 +617,7 @@ export const Scene = {
         return { TAG: "Err", _0: "Invalid component instance." };
       }
     }
-    return Scene$1.validateHierarchy(scene);
+    return Scene$2.validateHierarchy(scene);
   },
 
   imageForLayer(scene, layer) {
@@ -649,6 +658,14 @@ export const Scene = {
       )
     ) {
       return { TAG: "Err", _0: "Move or resize layers outside the new artboard bounds first." };
+    }
+    for (const group of scene.groups) {
+      if (group.frame != null) {
+        const result = Frame.validate(group.frame, board);
+        if (result.TAG === "Err") {
+          return result;
+        }
+      }
     }
     scene.board = board;
     return { TAG: "Ok" };
@@ -709,7 +726,12 @@ export const Scene = {
       layers: scene.layers.map((item) => ({ ...item })),
       instances: scene.instances.map((item) => ({ ...item, layerIds: item.layerIds.slice() })),
       assets: scene.assets.slice(),
-      groups: scene.groups.map((item) => ({ ...item, children: item.children.slice() })),
+      groups: scene.groups.map((item) => ({
+        ...item,
+        children: item.children.slice(),
+        frame:
+          item.frame == null ? item.frame : { ...item.frame, bounds: { ...item.frame.bounds } },
+      })),
     };
     const result$1 = candidate.layers;
     for (let i = 0; i < layers.length; i++) {
@@ -782,7 +804,12 @@ export const Scene = {
       layers: scene.layers.map((item) => ({ ...item })),
       instances: scene.instances.map((item) => ({ ...item, layerIds: item.layerIds.slice() })),
       assets: scene.assets.slice(),
-      groups: scene.groups.map((item) => ({ ...item, children: item.children.slice() })),
+      groups: scene.groups.map((item) => ({
+        ...item,
+        children: item.children.slice(),
+        frame:
+          item.frame == null ? item.frame : { ...item.frame, bounds: { ...item.frame.bounds } },
+      })),
     };
     const result$1 = Scene.replaceInstance(candidate, index, switch$.variant, false);
     if (result$1.TAG === "Err") {
@@ -803,7 +830,12 @@ export const Scene = {
       layers: scene.layers.map((item) => ({ ...item })),
       instances: scene.instances.map((item) => ({ ...item, layerIds: item.layerIds.slice() })),
       assets: scene.assets.slice(),
-      groups: scene.groups.map((item) => ({ ...item, children: item.children.slice() })),
+      groups: scene.groups.map((item) => ({
+        ...item,
+        children: item.children.slice(),
+        frame:
+          item.frame == null ? item.frame : { ...item.frame, bounds: { ...item.frame.bounds } },
+      })),
     };
     const end = candidate.instances.length;
     for (let index = 0; index < end; index++) {
@@ -835,7 +867,7 @@ export const Scene = {
         $removeOutOfBounds(result, index);
       }
       const instance = result.splice(index, 1)[0];
-      Scene$1.detachFromGroup(scene, instance.id);
+      Scene$2.detachFromGroup(scene, instance.id);
       $retain(scene.layers, (layer) => !instance.layerIds.includes(layer.id));
     } else {
       const position = $position(scene.layers, (layer) => layer.id === id);
@@ -850,7 +882,7 @@ export const Scene = {
         $removeOutOfBounds(result$1, index);
       }
       result$1.splice(index, 1);
-      Scene$1.detachFromGroup(scene, id);
+      Scene$2.detachFromGroup(scene, id);
     }
     Scene.pruneAssets(scene);
     return { TAG: "Ok" };
@@ -1062,6 +1094,8 @@ export function editDeserialize_deserialize(json) {
       "resize_artboard",
       "place_image",
       "create_group",
+      "create_frame",
+      "set_frame",
       "set_layer_parent",
       "rename_group",
       "ungroup",
@@ -1110,6 +1144,29 @@ export function editDeserialize_deserialize(json) {
             ["parentId", $json.option($json.string)],
           ],
           ([name, parentId]) => ({ TAG: "CreateGroup", name, parentId }),
+          { deny: true },
+        );
+      }
+      if (variant === "create_frame") {
+        return content.struct(
+          "struct variant Edit::CreateFrame",
+          [
+            ["name", $json.string],
+            ["parentId", $json.option($json.string)],
+            ["frame", frameDeserialize_deserialize],
+          ],
+          ([name, parentId, frame]) => ({ TAG: "CreateFrame", name, parentId, frame }),
+          { deny: true },
+        );
+      }
+      if (variant === "set_frame") {
+        return content.struct(
+          "struct variant Edit::SetFrame",
+          [
+            ["id", $json.string],
+            ["frame", frameDeserialize_deserialize],
+          ],
+          ([id, frame]) => ({ TAG: "SetFrame", id, frame }),
           { deny: true },
         );
       }
@@ -1188,6 +1245,30 @@ export function editSerialize_serialize(edit, json) {
     } else {
       json.string(edit.parentId);
     }
+    json.endObject();
+  } else if (edit.TAG === "CreateFrame") {
+    json.beginObject();
+    json.key("op");
+    json.string("create_frame");
+    json.key("name");
+    json.string(edit.name);
+    json.key("parentId");
+    if (edit.parentId == null) {
+      json.null();
+    } else {
+      json.string(edit.parentId);
+    }
+    json.key("frame");
+    frameSerialize_serialize(edit.frame, json);
+    json.endObject();
+  } else if (edit.TAG === "SetFrame") {
+    json.beginObject();
+    json.key("op");
+    json.string("set_frame");
+    json.key("id");
+    json.string(edit.id);
+    json.key("frame");
+    frameSerialize_serialize(edit.frame, json);
     json.endObject();
   } else if (edit.TAG === "SetLayerParent") {
     json.beginObject();
@@ -1340,6 +1421,8 @@ export const Session = {
       groups: transaction.scene.groups.map((item) => ({
         ...item,
         children: item.children.slice(),
+        frame:
+          item.frame == null ? item.frame : { ...item.frame, bounds: { ...item.frame.bounds } },
       })),
     };
     if (candidate.instances.length !== 0) {
@@ -1375,7 +1458,12 @@ export const Session = {
         layerIds: item.layerIds.slice(),
       })),
       assets: session.scene.assets.slice(),
-      groups: session.scene.groups.map((item) => ({ ...item, children: item.children.slice() })),
+      groups: session.scene.groups.map((item) => ({
+        ...item,
+        children: item.children.slice(),
+        frame:
+          item.frame == null ? item.frame : { ...item.frame, bounds: { ...item.frame.bounds } },
+      })),
     };
     let selected;
     const iter = batch.edits.entries();
@@ -1403,25 +1491,43 @@ export const Session = {
           }
           selected = result._0;
         } else if (edit.TAG === "CreateGroup") {
-          const result = Scene$1.createGroup(candidate, `${id}-${index}`, edit.name, edit.parentId);
+          const result = Scene$2.createGroup(candidate, `${id}-${index}`, edit.name, edit.parentId);
           if (result.TAG === "Err") {
             return result;
           }
           selected = result._0;
+        } else if (edit.TAG === "CreateFrame") {
+          const result = Scene$2.createGroup(
+            candidate,
+            `${id}-${index}`,
+            edit.name,
+            edit.parentId,
+            edit.frame,
+          );
+          if (result.TAG === "Err") {
+            return result;
+          }
+          selected = result._0;
+        } else if (edit.TAG === "SetFrame") {
+          const result = Scene$1.setFrame(candidate, edit.id, edit.frame);
+          if (result.TAG === "Err") {
+            return result;
+          }
+          selected = edit.id;
         } else if (edit.TAG === "SetLayerParent") {
-          const result = Scene$1.moveLayerNode(candidate, edit.id, edit.parentId);
+          const result = Scene$2.moveLayerNode(candidate, edit.id, edit.parentId);
           if (result.TAG === "Err") {
             return result;
           }
           selected = edit.id;
         } else if (edit.TAG === "RenameGroup") {
-          const result = Scene$1.renameGroup(candidate, edit.id, edit.name);
+          const result = Scene$2.renameGroup(candidate, edit.id, edit.name);
           if (result.TAG === "Err") {
             return result;
           }
           selected = edit.id;
         } else if (edit.TAG === "Ungroup") {
-          const result = Scene$1.ungroup(candidate, edit.id);
+          const result = Scene$2.ungroup(candidate, edit.id);
           if (result.TAG === "Err") {
             return result;
           }
@@ -1439,7 +1545,7 @@ export const Session = {
           if (result.TAG === "Err") {
             return result;
           }
-          Scene$1.normalizeLayerOrder(candidate);
+          Scene$2.normalizeLayerOrder(candidate);
         }
         break;
       }
@@ -1467,7 +1573,7 @@ export const Session = {
         if (result$2.TAG === "Err") {
           return result$2;
         }
-        Scene$1.normalizeLayerOrder(restored);
+        Scene$2.normalizeLayerOrder(restored);
         $assign(session, Session.new(restored));
         session.revision = id;
         edited = undefined;
@@ -1531,6 +1637,8 @@ export const Session = {
           groups: session.scene.groups.map((item) => ({
             ...item,
             children: item.children.slice(),
+            frame:
+              item.frame == null ? item.frame : { ...item.frame, bounds: { ...item.frame.bounds } },
           })),
         };
         const result$2 = Scene.edit(candidate, patch, id);
@@ -1561,6 +1669,8 @@ export const Session = {
           groups: session.scene.groups.map((item) => ({
             ...item,
             children: item.children.slice(),
+            frame:
+              item.frame == null ? item.frame : { ...item.frame, bounds: { ...item.frame.bounds } },
           })),
         };
         const result$2 = Scene.insertComponent(candidate, component, id);
@@ -1593,6 +1703,8 @@ export const Session = {
           groups: session.scene.groups.map((item) => ({
             ...item,
             children: item.children.slice(),
+            frame:
+              item.frame == null ? item.frame : { ...item.frame, bounds: { ...item.frame.bounds } },
           })),
         };
         const result$2 = Scene.switchComponent(candidate, switch$);
@@ -1623,6 +1735,8 @@ export const Session = {
           groups: session.scene.groups.map((item) => ({
             ...item,
             children: item.children.slice(),
+            frame:
+              item.frame == null ? item.frame : { ...item.frame, bounds: { ...item.frame.bounds } },
           })),
         };
         const result$2 = Scene.refreshComponents(candidate, variants);
@@ -1650,6 +1764,7 @@ export const Session = {
     const groups = session.scene.groups.map((item) => ({
       ...item,
       children: item.children.slice(),
+      frame: item.frame == null ? item.frame : { ...item.frame, bounds: { ...item.frame.bounds } },
     }));
     const board = session.scene.board;
     const value = session.revision;

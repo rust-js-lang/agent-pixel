@@ -1,6 +1,7 @@
 /*! Shared document rules for the worker and native server. */
 pub mod assets;
 pub mod bundle;
+pub mod frames;
 pub mod hierarchy;
 pub mod screens;
 

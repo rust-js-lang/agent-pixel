@@ -2,6 +2,7 @@
 
 /** Request/reply protocol for the document worker. */
 import {
+  $add,
   $assign,
   $byteLen,
   $clamp,
@@ -12,6 +13,7 @@ import {
   $foldToArray,
   $fromJson,
   $index,
+  $insert,
   $iter,
   $json,
   $min,
@@ -37,6 +39,7 @@ import {
 } from "@rust-js/std";
 import { MAX_SCENE_IMAGE_BYTES, RasterImage } from "../../core/src/assets.js";
 import { validTitle } from "../../core/src/bundle.js";
+import { Rect } from "../../core/src/frames.js";
 import { Scene as Scene$1 } from "../../core/src/hierarchy.js";
 import { Dimensions } from "../../core/src/lib.js";
 import {
@@ -112,6 +115,10 @@ const Session = {
             groups: session.scene.groups.map((item) => ({
               ...item,
               children: item.children.slice(),
+              frame:
+                item.frame == null
+                  ? item.frame
+                  : { ...item.frame, bounds: { ...item.frame.bounds } },
             })),
           };
           const edit = Scene$2.edit(candidate, patch, id);
@@ -140,6 +147,10 @@ const Session = {
             groups: session.scene.groups.map((item) => ({
               ...item,
               children: item.children.slice(),
+              frame:
+                item.frame == null
+                  ? item.frame
+                  : { ...item.frame, bounds: { ...item.frame.bounds } },
             })),
           };
           const insertComponent = Scene.insertComponent(candidate, component, id);
@@ -172,6 +183,10 @@ const Session = {
             groups: session.scene.groups.map((item) => ({
               ...item,
               children: item.children.slice(),
+              frame:
+                item.frame == null
+                  ? item.frame
+                  : { ...item.frame, bounds: { ...item.frame.bounds } },
             })),
           };
           const result$2 = Scene.switchComponent(candidate, switch$);
@@ -200,6 +215,10 @@ const Session = {
             groups: session.scene.groups.map((item) => ({
               ...item,
               children: item.children.slice(),
+              frame:
+                item.frame == null
+                  ? item.frame
+                  : { ...item.frame, bounds: { ...item.frame.bounds } },
             })),
           };
           const result$1 = Scene$2.refreshComponents(candidate, variants);
@@ -251,6 +270,7 @@ const Session = {
     const groups = session.scene.groups.map((item) => ({
       ...item,
       children: item.children.slice(),
+      frame: item.frame == null ? item.frame : { ...item.frame, bounds: { ...item.frame.bounds } },
     }));
     const board = session.scene.board;
     const value = session.revision;
@@ -296,7 +316,12 @@ const Session = {
       layers: scene.layers.map((item) => ({ ...item })),
       instances: scene.instances.map((item) => ({ ...item, layerIds: item.layerIds.slice() })),
       assets: scene.assets.slice(),
-      groups: scene.groups.map((item) => ({ ...item, children: item.children.slice() })),
+      groups: scene.groups.map((item) => ({
+        ...item,
+        children: item.children.slice(),
+        frame:
+          item.frame == null ? item.frame : { ...item.frame, bounds: { ...item.frame.bounds } },
+      })),
     };
     if (candidate.instances.length !== 0) {
       const result = Scene$2.refreshComponents(candidate, session.library);
@@ -329,6 +354,8 @@ const Session = {
           groups: session.scene.groups.map((item) => ({
             ...item,
             children: item.children.slice(),
+            frame:
+              item.frame == null ? item.frame : { ...item.frame, bounds: { ...item.frame.bounds } },
           })),
         };
         let selected;
@@ -351,13 +378,13 @@ const Session = {
           const index = value[0];
           const edit = value[1];
           let tmp;
-          bb83: {
+          bb101: {
             if (edit.TAG === "Patch") {
               const layer = edit.layer;
               const value = Scene$2.edit(candidate, layer, `${id}-${index}`);
               if (value.TAG !== "Err") {
                 tmp = value._0;
-                break bb83;
+                break bb101;
               }
               result = value;
             } else if (edit.TAG === "ResizeArtboard") {
@@ -367,14 +394,14 @@ const Session = {
                 result = result$1;
               } else {
                 tmp = undefined;
-                break bb83;
+                break bb101;
               }
             } else if (edit.TAG === "PlaceImage") {
               const placement = edit.placement;
               const placeImage = Scene.placeImage(candidate, placement, `${id}-${index}`);
               if (placeImage.TAG !== "Err") {
                 tmp = placeImage._0;
-                break bb83;
+                break bb101;
               }
               result = placeImage;
             } else if (edit.TAG === "CreateGroup") {
@@ -382,9 +409,32 @@ const Session = {
               const result$1 = Scene.createGroup(candidate, `${id}-${index}`, name, parentId);
               if (result$1.TAG !== "Err") {
                 tmp = result$1._0;
-                break bb83;
+                break bb101;
               }
               result = result$1;
+            } else if (edit.TAG === "CreateFrame") {
+              const { name, parentId, frame } = edit;
+              const result$1 = Scene.createGroup(
+                candidate,
+                `${id}-${index}`,
+                name,
+                parentId,
+                frame,
+              );
+              if (result$1.TAG !== "Err") {
+                tmp = result$1._0;
+                break bb101;
+              }
+              result = result$1;
+            } else if (edit.TAG === "SetFrame") {
+              const { id, frame } = edit;
+              const result$1 = Scene.setFrame(candidate, id, frame);
+              if (result$1.TAG === "Err") {
+                result = result$1;
+              } else {
+                tmp = id;
+                break bb101;
+              }
             } else if (edit.TAG === "SetLayerParent") {
               const { id, parentId } = edit;
               const result$1 = Scene.moveLayerNode(candidate, id, parentId);
@@ -392,7 +442,7 @@ const Session = {
                 result = result$1;
               } else {
                 tmp = id;
-                break bb83;
+                break bb101;
               }
             } else if (edit.TAG === "RenameGroup") {
               const { id, name } = edit;
@@ -401,7 +451,7 @@ const Session = {
                 result = result$1;
               } else {
                 tmp = id;
-                break bb83;
+                break bb101;
               }
             } else if (edit.TAG === "Ungroup") {
               const id = edit.id;
@@ -410,7 +460,7 @@ const Session = {
                 result = result$1;
               } else {
                 tmp = undefined;
-                break bb83;
+                break bb101;
               }
             } else {
               const id = edit.id;
@@ -419,7 +469,7 @@ const Session = {
                 result = result$1;
               } else {
                 tmp = undefined;
-                break bb83;
+                break bb101;
               }
             }
             break;
@@ -477,7 +527,12 @@ const Scene = {
       layers: scene.layers.map((item) => ({ ...item })),
       instances: scene.instances.map((item) => ({ ...item, layerIds: item.layerIds.slice() })),
       assets: scene.assets.slice(),
-      groups: scene.groups.map((item) => ({ ...item, children: item.children.slice() })),
+      groups: scene.groups.map((item) => ({
+        ...item,
+        children: item.children.slice(),
+        frame:
+          item.frame == null ? item.frame : { ...item.frame, bounds: { ...item.frame.bounds } },
+      })),
     };
     const result$1 = candidate.layers;
     for (let i = 0; i < layers.length; i++) {
@@ -517,7 +572,12 @@ const Scene = {
       layers: scene.layers.map((item) => ({ ...item })),
       instances: scene.instances.map((item) => ({ ...item, layerIds: item.layerIds.slice() })),
       assets: scene.assets.slice(),
-      groups: scene.groups.map((item) => ({ ...item, children: item.children.slice() })),
+      groups: scene.groups.map((item) => ({
+        ...item,
+        children: item.children.slice(),
+        frame:
+          item.frame == null ? item.frame : { ...item.frame, bounds: { ...item.frame.bounds } },
+      })),
     };
     const result = Scene.replaceInstance(candidate, value, switch$.variant, false);
     if (result.TAG === "Err") {
@@ -542,6 +602,14 @@ const Scene = {
       )
     ) {
       return { TAG: "Err", _0: "Move or resize layers outside the new artboard bounds first." };
+    }
+    for (const group of scene.groups) {
+      if (group.frame != null) {
+        const result = Frame.validate(group.frame, board);
+        if (result.TAG === "Err") {
+          return result;
+        }
+      }
     }
     scene.board = board;
     return { TAG: "Ok" };
@@ -591,16 +659,90 @@ const Scene = {
     }
     return result;
   },
-  createGroup(scene, id, name, parentId) {
+  createGroup(scene, id, name, parentId, frame) {
     if (!validTitle(name)) {
       return { TAG: "Err", _0: "Enter a group name between 1 and 80 characters." };
     }
-    scene.groups.push({ id, name, children: [] });
+    scene.groups.push({ id, name, children: [], frame: frame ?? undefined });
     const result = Scene.moveLayerNode(scene, id, parentId);
     if (result.TAG === "Err") {
       return result;
     }
     return { TAG: "Ok", _0: id };
+  },
+  setFrame(scene, id, next) {
+    const result = Frame.validate(next, scene.board);
+    if (result.TAG === "Err") {
+      return result;
+    }
+    const result$1 = Scene.validateHierarchy(scene);
+    if (result$1.TAG === "Err") {
+      return result$1;
+    }
+    const position = $position(scene.groups, (group) => group.id === id);
+    const result$2 =
+      position != null ? { TAG: "Ok", _0: position } : { TAG: "Err", _0: "Unknown frame." };
+    if (result$2.TAG === "Err") {
+      return result$2;
+    }
+    const value = result$2._0;
+    const option = $index(scene.groups, value).frame;
+    const result$3 =
+      option != null ? { TAG: "Ok", _0: option } : { TAG: "Err", _0: "Unknown frame." };
+    if (result$3.TAG === "Err") {
+      return result$3;
+    }
+    const value$1 = result$3._0;
+    const dx = (next.bounds.x - value$1.bounds.x) | 0;
+    const dy = (next.bounds.y - value$1.bounds.y) | 0;
+    bb62: {
+      if (dx || dy) {
+        const descendants = Scene$1.layerTree(scene);
+        const option = find(descendants, id);
+        const result =
+          option != null ? { TAG: "Ok", _0: option } : { TAG: "Err", _0: "Unknown frame." };
+        if (result.TAG === "Err") {
+          return result;
+        }
+        const layerNode = result._0;
+        const ids = new Set();
+        collect(layerNode.children, ids);
+        const iter = $iter(scene.layers);
+        while (true) {
+          const layer = $next(iter);
+          if (layer != null) {
+            if (ids.has(layer.id)) {
+              layer.x = (layer.x + dx) | 0;
+              layer.y = (layer.y + dy) | 0;
+            }
+          } else {
+            const iter = $iter(scene.instances);
+            while (true) {
+              const instance = $next(iter);
+              if (instance != null) {
+                if (ids.has(instance.id)) {
+                  instance.x = (instance.x + dx) | 0;
+                  instance.y = (instance.y + dy) | 0;
+                }
+              } else {
+                for (const group of scene.groups) {
+                  if (ids.has(group.id)) {
+                    if (group.frame != null) {
+                      const frame = group.frame;
+                      frame.bounds.x = (frame.bounds.x + dx) | 0;
+                      frame.bounds.y = (frame.bounds.y + dy) | 0;
+                    }
+                  }
+                }
+                break bb62;
+              }
+            }
+          }
+        }
+      }
+    }
+    $index(scene.groups, value).frame = next;
+    return { TAG: "Ok" };
   },
   moveLayerNode(scene, id, parentId) {
     if (Scene$2.instanceForLayer(scene, id) != null) {
@@ -736,6 +878,95 @@ const Scene = {
     Scene.pruneAssets(scene);
     return { TAG: "Ok", _0: selected };
   },
+  validateHierarchy(scene) {
+    const ids = new Set();
+    const iter = scene.layers.values();
+    while (true) {
+      const layer = iter.next().value;
+      if (layer != null) {
+        ids.add(layer.id);
+      } else {
+        const iter = scene.instances.values();
+        while (true) {
+          const instance = iter.next().value;
+          if (instance != null) {
+            if (validId(instance.id)) {
+              if ($add(ids, instance.id)) {
+                continue;
+              }
+            }
+            return { TAG: "Err", _0: "Invalid or duplicate instance ID." };
+          }
+          const iter$1 = scene.groups.values();
+          while (true) {
+            const group = iter$1.next().value;
+            if (group != null) {
+              if (group.frame != null) {
+                const result = Frame.validate(group.frame, scene.board);
+                if (result.TAG === "Err") {
+                  return result;
+                }
+              }
+              if (validId(group.id)) {
+                if (validTitle(group.name)) {
+                  if ($add(ids, group.id)) {
+                    continue;
+                  }
+                }
+              }
+              return { TAG: "Err", _0: "Invalid layer group." };
+            }
+            const parents = new Map();
+            const iter = scene.instances.values();
+            while (true) {
+              const instance = iter.next().value;
+              if (instance != null) {
+                for (const id of instance.layerIds) {
+                  parents.set(id, instance.id);
+                }
+              } else {
+                const iter = scene.groups.values();
+                while (true) {
+                  const group = iter.next().value;
+                  if (group != null) {
+                    for (const id of group.children) {
+                      if (ids.has(id)) {
+                        if ($insert(parents, id, group.id) == null) {
+                          continue;
+                        }
+                      }
+                      return { TAG: "Err", _0: "Each group child must exist and have one parent." };
+                    }
+                  } else {
+                    for (const id of ids) {
+                      let current = id;
+                      for (let depth = 0; depth <= 16; depth++) {
+                        const parent = parents.get(current);
+                        if (parent == null) {
+                          break;
+                        }
+                        if (parent !== id) {
+                          if (depth !== 16) {
+                            current = parent;
+                            continue;
+                          }
+                        }
+                        return {
+                          TAG: "Err",
+                          _0: "Groups cannot contain cycles or exceed 16 levels.",
+                        };
+                      }
+                    }
+                    return { TAG: "Ok" };
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
   detachFromGroup(scene, id) {
     for (const group of scene.groups) {
       $retain(group.children, (child) => child !== id);
@@ -743,6 +974,18 @@ const Scene = {
   },
   pruneAssets(scene) {
     $retain(scene.assets, (asset) => scene.layers.some((layer) => layer.imageId === asset.id));
+  },
+};
+
+const Frame = {
+  validate(frame, board) {
+    if (!Rect.fits({ ...frame.bounds }, board)) {
+      return { TAG: "Err", _0: "Keep the frame inside the artboard." };
+    }
+    if (!validFill(frame.fill)) {
+      return { TAG: "Err", _0: "Choose a six-digit hex frame fill." };
+    }
+    return { TAG: "Ok" };
   },
 };
 
@@ -754,22 +997,15 @@ const Layer = {
       layer.kind === "text" ||
       layer.kind === "image"
     ) {
-      const stripPrefix = $stripPrefix(layer.fill, "#");
-      if (
-        stripPrefix != null &&
-        $byteLen(stripPrefix) === 6 &&
-        $utf8Bytes(stripPrefix).every(
-          (b) => (b >= 48 && b <= 57) || (b >= 65 && b <= 70) || (b >= 97 && b <= 102),
-        )
-      ) {
+      if (validFill(layer.fill)) {
         if ((layer.kind === "image") !== (layer.imageId != null)) {
           return { TAG: "Err", _0: "Image layers need an asset reference." };
         }
-        bb34: {
+        bb33: {
           if (layer.kind === "text") {
             if (layer.text != null && $trim(layer.text) !== "" && $byteLen(layer.text) <= 512) {
               if (layer.fontSize != null && 8 <= layer.fontSize && layer.fontSize <= 96) {
-                break bb34;
+                break bb33;
               }
             }
             return { TAG: "Err", _0: "Text needs content and a font size from 8 to 96." };
@@ -954,12 +1190,12 @@ function receiveRequest(event) {
 
 function paintOrder(rows, order, index) {
   for (const row of iterator_rev($iter(rows))) {
-    if (row.kind !== "group" && row.kind !== "instance") {
+    if (row.kind !== "group" && row.kind !== "instance" && row.kind !== "frame") {
       order.set(row.id, index.value);
       index.value = (index.value + 1) >>> 0;
-      continue;
+    } else {
+      paintOrder(row.children, order, index);
     }
-    paintOrder(row.children, order, index);
   }
 }
 
@@ -1016,6 +1252,38 @@ function placedLayers(variant, id, x, y, fit, board) {
     }
   }
   return { TAG: "Err", _0: "The component is larger than this artboard." };
+}
+
+function find(nodes, id) {
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    if (node.id === id) {
+      return node;
+    }
+    const found = find(node.children, id);
+    if (found != null) {
+      return found;
+    }
+  }
+}
+
+function collect(nodes, ids) {
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    ids.add(node.id);
+    collect(node.children, ids);
+  }
+}
+
+function validFill(fill) {
+  const stripPrefix = $stripPrefix(fill, "#");
+  return (
+    stripPrefix != null &&
+    $byteLen(stripPrefix) === 6 &&
+    $utf8Bytes(stripPrefix).every(
+      (b) => (b >= 48 && b <= 57) || (b >= 65 && b <= 70) || (b >= 97 && b <= 102),
+    )
+  );
 }
 
 function validId(id) {

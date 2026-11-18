@@ -8,12 +8,13 @@ use crate::{
 use pixel_geometry::{
     Dimensions, MAX_ARTBOARD_SIZE, MIN_ARTBOARD_SIZE,
     assets::ImageAsset,
+    frames::{Frame, Rect},
     hierarchy::{LayerGroup, LayerNode},
     scene::{Author, ComponentInstance, Edit, Layer, Patch, Scene},
     screens::ScreenEdit,
 };
 use react::{CSSProperties, JSX, event::PointerEvent, jsx, use_state};
-use std::cell::RefCell;
+use std::{cell::RefCell, collections::HashMap};
 use webapi::{FormDataEntryValue, HTMLButtonElement, window_global::window};
 
 struct Drag {
@@ -25,6 +26,7 @@ struct Drag {
     origin_x: f64,
     origin_y: f64,
     board: Dimensions,
+    clip: Option<Rect>,
     scale_x: f64,
     scale_y: f64,
 }
@@ -52,7 +54,12 @@ fn percent(value: i32, extent: i32) -> String {
     format!("{}%", f64::from(value) / f64::from(extent) * 100.0)
 }
 
-fn begin_drag(layer: &Layer, dimensions: Dimensions, event: &PointerEvent<HTMLButtonElement>) {
+fn begin_drag(
+    layer: &Layer,
+    dimensions: Dimensions,
+    clip: Option<Rect>,
+    event: &PointerEvent<HTMLButtonElement>,
+) {
     if event.button() != 0 {
         return;
     }
@@ -74,6 +81,7 @@ fn begin_drag(layer: &Layer, dimensions: Dimensions, event: &PointerEvent<HTMLBu
             origin_x: event.client_x(),
             origin_y: event.client_y(),
             board: dimensions,
+            clip,
             scale_x: f64::from(dimensions.width) / bounds.width(),
             scale_y: f64::from(dimensions.height) / bounds.height(),
         })
@@ -81,24 +89,33 @@ fn begin_drag(layer: &Layer, dimensions: Dimensions, event: &PointerEvent<HTMLBu
     select(layer.id.clone());
 }
 
-fn set_position(event: &PointerEvent<HTMLButtonElement>, x: i32, y: i32, board: Dimensions) {
+fn set_position(event: &PointerEvent<HTMLButtonElement>, x: i32, y: i32, drag: &Drag) {
     let style = event.current_target().style();
-    style.set_left(&percent(x, board.width));
-    style.set_top(&percent(y, board.height));
+    style.set_left(&percent(x, drag.board.width));
+    style.set_top(&percent(y, drag.board.height));
+    style.set_clip_path(&clip_style(
+        Rect {
+            x,
+            y,
+            width: drag.width,
+            height: drag.height,
+        },
+        drag.clip,
+    ));
 }
 
 fn move_drag(event: &PointerEvent<HTMLButtonElement>) {
     DRAG.with_borrow(|drag| {
         if let Some(drag) = drag {
             let (x, y) = drag.position(event);
-            set_position(event, x, y, drag.board);
+            set_position(event, x, y, drag);
         }
     });
 }
 
 fn end_drag(event: &PointerEvent<HTMLButtonElement>, commit: bool) {
     if let Some(drag) = DRAG.take() {
-        set_position(event, drag.x, drag.y, drag.board);
+        set_position(event, drag.x, drag.y, &drag);
         let (x, y) = drag.position(event);
         if commit && (x != drag.x || y != drag.y) {
             edit(Patch {
@@ -111,7 +128,27 @@ fn end_drag(event: &PointerEvent<HTMLButtonElement>, commit: bool) {
     }
 }
 
-fn layer_style(layer: &Layer, board: Dimensions) -> CSSProperties {
+fn clip_style(bounds: Rect, clip: Option<Rect>) -> String {
+    let Some(clip) = clip else {
+        return "none".into();
+    };
+    if clip.width == 0 || clip.height == 0 {
+        return "inset(50%)".into();
+    }
+    let top = (clip.y - bounds.y).clamp(0, bounds.height);
+    let left = (clip.x - bounds.x).clamp(0, bounds.width);
+    let right = (bounds.x + bounds.width - clip.x - clip.width).clamp(0, bounds.width - left);
+    let bottom = (bounds.y + bounds.height - clip.y - clip.height).clamp(0, bounds.height - top);
+    format!(
+        "inset({} {} {} {})",
+        percent(top, bounds.height),
+        percent(right, bounds.width),
+        percent(bottom, bounds.height),
+        percent(left, bounds.width)
+    )
+}
+
+fn layer_style(layer: &Layer, board: Dimensions, clip: Option<Rect>) -> CSSProperties {
     CSSProperties::new()
         .left(percent(layer.x, board.width))
         .top(percent(layer.y, board.height))
@@ -124,6 +161,15 @@ fn layer_style(layer: &Layer, board: Dimensions) -> CSSProperties {
         })
         .border_radius(if layer.kind == "ellipse" { "50%" } else { "0" })
         .color(layer.fill.clone())
+        .clip_path(clip_style(
+            Rect {
+                x: layer.x,
+                y: layer.y,
+                width: layer.width,
+                height: layer.height,
+            },
+            clip,
+        ))
         .font_size(layer.font_size.map_or_else(String::new, |size| {
             format!("{}cqw", f64::from(size) / f64::from(board.width) * 100.0)
         }))
@@ -143,13 +189,18 @@ fn layer_content(layer: &Layer, image: Option<&ImageAsset>) -> JSX::Element {
     }
 }
 
-pub fn preview_layer(layer: &Layer, image: Option<&ImageAsset>, board: Dimensions) -> JSX::Element {
+fn preview_layer(
+    layer: &Layer,
+    image: Option<&ImageAsset>,
+    board: Dimensions,
+    clip: Option<Rect>,
+) -> JSX::Element {
     let class = if layer.kind == "text" {
         format!("{} {}", ARTBOARD.preview_layer(), ARTBOARD.preview_text())
     } else {
         ARTBOARD.preview_layer()
     };
-    jsx! { <div key={layer.id.clone()} className={class} style={layer_style(layer, board)}>{layer_content(layer, image)}</div> }
+    jsx! { <div key={layer.id.clone()} className={class} style={layer_style(layer, board, clip)}>{layer_content(layer, image)}</div> }
 }
 
 fn shape(
@@ -157,10 +208,11 @@ fn shape(
     linked: bool,
     image: Option<&ImageAsset>,
     board: Dimensions,
+    clip: Option<Rect>,
 ) -> JSX::Element {
     let captured = layer.clone();
     let id = layer.id.clone();
-    let styles = layer_style(layer, board);
+    let styles = layer_style(layer, board, clip);
     let class = if layer.kind == "text" {
         format!("{} {}", EDITOR_STYLES.shape(), EDITOR_STYLES.text_layer())
     } else {
@@ -170,11 +222,53 @@ fn shape(
         <button key={layer.id.clone()} className={class} style={styles}
             aria-label={format!("Select {}", image.map_or_else(|| layer.name(), |asset| asset.image.name.clone()))}
             onClick={move |_| select(id.clone())}
-            onPointerDown={move |event| { if !linked { begin_drag(&captured, board, event); } }}
+            onPointerDown={move |event| { if !linked { begin_drag(&captured, board, clip, event); } }}
             onPointerMove={move_drag}
             onPointerUp={|event| end_drag(event, true)}
             onPointerCancel={|event| end_drag(event, false)}>{layer_content(layer, image)}</button>
     }
+}
+
+pub fn artwork(scene: &Scene, interactive: bool) -> Vec<JSX::Element> {
+    let layers: HashMap<_, _> = scene
+        .layers
+        .iter()
+        .map(|layer| (layer.id.as_str(), layer))
+        .collect();
+    let frames: HashMap<_, _> = scene
+        .groups
+        .iter()
+        .filter_map(|group| {
+            group
+                .frame
+                .as_ref()
+                .map(|frame| (group.id.as_str(), (group, frame)))
+        })
+        .collect();
+    let board = scene.board;
+    scene.paint_nodes().into_iter().filter_map(|node| {
+        if let Some(layer) = layers.get(node.id.as_str()) {
+            let image = scene.image_for_layer(layer);
+            return Some(if interactive {
+                shape(layer, scene.instance_for_layer(&layer.id).is_some(), image, board, node.clip)
+            } else {
+                preview_layer(layer, image, board, node.clip)
+            });
+        }
+        let (group, frame) = frames.get(node.id.as_str())?;
+        let bounds = frame.bounds;
+        let style = CSSProperties::new()
+            .left(percent(bounds.x, board.width)).top(percent(bounds.y, board.height))
+            .width(percent(bounds.width, board.width)).height(percent(bounds.height, board.height))
+            .background(frame.fill.clone()).clip_path(clip_style(bounds, node.clip));
+        let id = group.id.clone();
+        Some(if interactive {
+            jsx! { <button key={group.id.clone()} type="button" aria-label={format!("Select frame {}", group.name)}
+                className={EDITOR_STYLES.shape()} style={style} onClick={move |_| select(id.clone())} /> }
+        } else {
+            jsx! { <div key={group.id.clone()} className={ARTBOARD.preview_layer()} style={style} /> }
+        })
+    }).collect()
 }
 
 struct LayerRowProps {
@@ -185,11 +279,12 @@ struct LayerRowProps {
 fn LayerRow(LayerRowProps { node, selected }: LayerRowProps) -> JSX::Element {
     let (expanded, set_expanded) = use_state(|| true);
     let expanded = *expanded;
-    let container = node.kind == "group" || node.kind == "instance";
+    let container = matches!(node.kind.as_str(), "group" | "frame" | "instance");
     let id = node.id.clone();
     let name = node.name.clone();
     let icon = match node.kind.as_str() {
         "group" => "▱",
+        "frame" => "▣",
         "instance" => "◇",
         "text" => "T",
         "image" => "▧",
@@ -261,6 +356,10 @@ fn parent_picker(scene: &Scene, id: &str, disabled: bool) -> JSX::Element {
 fn group_inspector(group: &LayerGroup, disabled: bool) -> JSX::Element {
     let id = group.id.clone();
     let rename_id = id.clone();
+    let frame = group
+        .frame
+        .as_ref()
+        .map(|frame| frame_inspector(&id, frame, disabled));
     jsx! {
         <>
             <h2>{group.name.clone()}</h2>
@@ -272,8 +371,41 @@ fn group_inspector(group: &LayerGroup, disabled: bool) -> JSX::Element {
                 <input name="group-name" aria-label="Group name" defaultValue={group.name.clone()} required maxLength={80} disabled={disabled} />
                 <button type="submit" disabled={disabled}>"Rename"</button>
             </form>
-            <p><button type="button" disabled={disabled} onClick={move |_| crate::apply_edit(Edit::Ungroup { id: id.clone() })}>"Ungroup"</button></p>
+            {frame}
+            <p><button type="button" disabled={disabled} onClick={move |_| crate::apply_edit(Edit::Ungroup { id: id.clone() })}>{if group.frame.is_some() { "Remove frame, keep layers" } else { "Ungroup" }}</button></p>
         </>
+    }
+}
+
+fn frame_inspector(id: &str, frame: &Frame, disabled: bool) -> JSX::Element {
+    let id = id.to_owned();
+    let bounds = frame.bounds;
+    let key = format!(
+        "{id}-{}-{}-{}-{}-{}-{}",
+        bounds.x, bounds.y, bounds.width, bounds.height, frame.fill, frame.clip
+    );
+    let fields = [("x", "X", bounds.x, 0), ("y", "Y", bounds.y, 0), ("width", "Width", bounds.width, 1), ("height", "Height", bounds.height, 1)]
+        .into_iter().map(|(name, label, value, min)| jsx! {
+            <label key={name}>{label}<input type="number" name={name} min={min} max={MAX_ARTBOARD_SIZE}
+                defaultValue={value} required disabled={disabled} /></label>
+        }).collect::<Vec<_>>();
+    jsx! {
+        <form key={key} aria-label="Frame geometry" action={move |data: &webapi::FormData| {
+            let number = |key| match data.get(key) {
+                Some(FormDataEntryValue::Str(value)) => value.parse::<i32>().ok(),
+                _ => None,
+            };
+            if let (Some(x), Some(y), Some(width), Some(height), Some(FormDataEntryValue::Str(fill))) = (number("x"), number("y"), number("width"), number("height"), data.get("fill")) {
+                crate::apply_edit(Edit::SetFrame { id: id.clone(), frame: Frame {
+                    bounds: Rect { x, y, width, height }, fill: fill.to_owned(), clip: data.has("clip"),
+                }});
+            }
+        }}>
+            {fields}
+            <label>"Fill"<input type="color" name="fill" defaultValue={frame.fill.clone()} disabled={disabled} /></label>
+            <label><input type="checkbox" name="clip" defaultChecked={frame.clip} disabled={disabled} />"Clip children"</label>
+            <button type="submit" disabled={disabled}>"Update frame"</button>
+        </form>
     }
 }
 
@@ -540,13 +672,7 @@ pub(crate) fn prototype(editor: &Editor) -> JSX::Element {
     let screen = editor.screen.as_ref().expect("Prototype screen");
     let scene = editor.document.scene.as_ref();
     let board = scene.map(|scene| scene.board).unwrap_or_default();
-    let layers = scene.map(|scene| {
-        scene
-            .layers
-            .iter()
-            .map(|layer| preview_layer(layer, scene.image_for_layer(layer), board))
-            .collect::<Vec<_>>()
-    });
+    let layers = scene.map(|scene| artwork(scene, false));
     let action = screen.action.as_ref().expect("Prototype action");
     let source = scene.and_then(|scene| {
         scene
@@ -554,10 +680,19 @@ pub(crate) fn prototype(editor: &Editor) -> JSX::Element {
             .iter()
             .find(|layer| layer.id == action.layer_id)
     });
+    let clip = scene
+        .and_then(|scene| {
+            scene
+                .paint_nodes()
+                .into_iter()
+                .find(|node| node.id == action.layer_id)
+        })
+        .and_then(|node| node.clip);
     let hotspot = source.map(|layer| {
         let placement = CSSProperties::new().left(percent(layer.x, board.width))
             .top(percent(layer.y, board.height)).width(percent(layer.width, board.width))
-            .height(percent(layer.height, board.height));
+            .height(percent(layer.height, board.height))
+            .clip_path(clip_style(Rect { x: layer.x, y: layer.y, width: layer.width, height: layer.height }, clip));
         jsx! {
             <a className={JOURNEY.prototype_hotspot()} href={journey::href(&editor.project.id, &action.next, true)} style={placement}
                 aria-label={action.label.clone()} />
@@ -598,19 +733,7 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
     let selected = editor.selected.as_deref();
     let scene = editor.document.scene.as_ref();
     let board = scene.map(|scene| scene.board).unwrap_or_default();
-    let shape_list = layers
-        .iter()
-        .map(|layer| {
-            shape(
-                layer,
-                scene
-                    .and_then(|scene| scene.instance_for_layer(&layer.id))
-                    .is_some(),
-                scene.and_then(|scene| scene.image_for_layer(layer)),
-                board,
-            )
-        })
-        .collect::<Vec<_>>();
+    let shape_list = scene.map(|scene| artwork(scene, true));
     let disabled =
         editor.busy || editor.recovery.is_some() || editor.screen_removed || scene.is_none();
     let selected_layer = layers
@@ -719,6 +842,17 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
                         <button type="button" disabled={disabled || editor.history.undo.is_empty()} onClick={|_| crate::history_action(true)}>"Undo"</button>
                         <button type="button" disabled={disabled || editor.history.redo.is_empty()} onClick={|_| crate::history_action(false)}>"Redo"</button>
                         <button type="button" disabled={disabled || selected.is_none() || group.is_some()} onClick={|_| crate::delete_selection()}>"Delete layer"</button>
+                        <button type="button" disabled={disabled} onClick={move |_| {
+                            let width = 240.min(board.width);
+                            let height = 180.min(board.height);
+                            crate::apply_edit(Edit::CreateFrame {
+                                name: "Frame".into(), parent_id: None,
+                                frame: Frame {
+                                    bounds: Rect { x: 40.min(board.width - width), y: 40.min(board.height - height), width, height },
+                                    fill: "#ffffff".into(), clip: true,
+                                }
+                            });
+                        }}>"▣ Frame +"</button>
                         <button id="rect" disabled={disabled} onClick={|_| add("rectangle")}>"▢  Rectangle +"</button>
                         <button id="ellipse" disabled={disabled} onClick={|_| add("ellipse")}>"○  Ellipse +"</button>
                         <button disabled={disabled} onClick={move |_| edit(Patch { kind: Some("text".into()), text: Some("Label".into()), font_size: Some(20), width: Some(170.min(board.width)), height: Some(32), fill: Some("#20231f".into()), ..Patch::default() })}>"T  Text +"</button>

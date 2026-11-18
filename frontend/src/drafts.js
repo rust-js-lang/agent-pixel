@@ -156,6 +156,10 @@ export function read(key) {
                       groups: find.document.scene.groups.map((item) => ({
                         ...item,
                         children: item.children.slice(),
+                        frame:
+                          item.frame == null
+                            ? item.frame
+                            : { ...item.frame, bounds: { ...item.frame.bounds } },
                       })),
                     },
             }
@@ -245,6 +249,10 @@ export function previous(key, expected) {
                       groups: record.previous.scene.groups.map((item) => ({
                         ...item,
                         children: item.children.slice(),
+                        frame:
+                          item.frame == null
+                            ? item.frame
+                            : { ...item.frame, bounds: { ...item.frame.bounds } },
                       })),
                     },
             };
@@ -358,6 +366,10 @@ export async function commit(location, expected, document, title, library) {
                       groups: current.document.scene.groups.map((item) => ({
                         ...item,
                         children: item.children.slice(),
+                        frame:
+                          item.frame == null
+                            ? item.frame
+                            : { ...item.frame, bounds: { ...item.frame.bounds } },
                       })),
                     },
             },
@@ -380,6 +392,10 @@ export async function commit(location, expected, document, title, library) {
                             groups: current.previous.scene.groups.map((item) => ({
                               ...item,
                               children: item.children.slice(),
+                              frame:
+                                item.frame == null
+                                  ? item.frame
+                                  : { ...item.frame, bounds: { ...item.frame.bounds } },
                             })),
                           },
                   },
@@ -420,6 +436,10 @@ export async function commit(location, expected, document, title, library) {
                 groups: document.scene.groups.map((item) => ({
                   ...item,
                   children: item.children.slice(),
+                  frame:
+                    item.frame == null
+                      ? item.frame
+                      : { ...item.frame, bounds: { ...item.frame.bounds } },
                 })),
               };
         const map =
@@ -440,6 +460,10 @@ export async function commit(location, expected, document, title, library) {
                         groups: current.document.scene.groups.map((item) => ({
                           ...item,
                           children: item.children.slice(),
+                          frame:
+                            item.frame == null
+                              ? item.frame
+                              : { ...item.frame, bounds: { ...item.frame.bounds } },
                         })),
                       },
               }
@@ -487,6 +511,10 @@ export async function commit(location, expected, document, title, library) {
                 groups: document.scene.groups.map((item) => ({
                   ...item,
                   children: item.children.slice(),
+                  frame:
+                    item.frame == null
+                      ? item.frame
+                      : { ...item.frame, bounds: { ...item.frame.bounds } },
                 })),
               };
         next = {

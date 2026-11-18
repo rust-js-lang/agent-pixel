@@ -2,6 +2,7 @@
 
 import type { Dimensions } from "./lib.js";
 import type { ImageAsset, ImagePlacement } from "./assets.js";
+import type { Frame } from "./frames.js";
 import type { LayerGroup } from "./hierarchy.js";
 
 interface Transaction {
@@ -170,6 +171,15 @@ export type Edit = {
     TAG: "CreateGroup";
     name: string;
     parentId: string | null | undefined;
+} | {
+    TAG: "CreateFrame";
+    name: string;
+    parentId: string | null | undefined;
+    frame: Frame;
+} | {
+    TAG: "SetFrame";
+    id: string;
+    frame: Frame;
 } | {
     TAG: "SetLayerParent";
     id: string;

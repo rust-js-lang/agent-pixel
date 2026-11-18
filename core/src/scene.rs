@@ -1,6 +1,7 @@
 use crate::{
     Dimensions,
     assets::{ImageAsset, ImagePlacement, MAX_SCENE_IMAGE_BYTES},
+    frames::Frame,
     hierarchy::LayerGroup,
 };
 use serde::{Deserialize, Serialize};
@@ -145,6 +146,11 @@ fn placed_layers(
         .collect())
 }
 
+pub(crate) fn valid_fill(fill: &str) -> bool {
+    fill.strip_prefix('#')
+        .is_some_and(|hex| hex.len() == 6 && hex.bytes().all(|b| b.is_ascii_hexdigit()))
+}
+
 pub(crate) fn valid_id(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= 64
@@ -184,10 +190,7 @@ impl Layer {
         if !matches!(
             self.kind.as_str(),
             "ellipse" | "rectangle" | "text" | "image"
-        ) || !self
-            .fill
-            .strip_prefix('#')
-            .is_some_and(|hex| hex.len() == 6 && hex.bytes().all(|b| b.is_ascii_hexdigit()))
+        ) || !valid_fill(&self.fill)
         {
             return Err("Choose a shape and a six-digit hex fill.");
         }
@@ -328,6 +331,11 @@ impl Scene {
             .any(|layer| !board.fits(layer.x, layer.y, layer.width, layer.height))
         {
             return Err("Move or resize layers outside the new artboard bounds first.");
+        }
+        for group in &self.groups {
+            if let Some(frame) = &group.frame {
+                frame.validate(board)?;
+            }
         }
         self.board = board;
         Ok(())
@@ -655,6 +663,16 @@ pub enum Edit {
         #[serde(rename = "parentId")]
         parent_id: Option<String>,
     },
+    CreateFrame {
+        name: String,
+        #[serde(rename = "parentId")]
+        parent_id: Option<String>,
+        frame: Frame,
+    },
+    SetFrame {
+        id: String,
+        frame: Frame,
+    },
     SetLayerParent {
         id: String,
         #[serde(rename = "parentId")]
@@ -767,7 +785,21 @@ impl Session {
                     Some(candidate.place_image(placement, format!("{id}-{index}"))?)
                 }
                 Edit::CreateGroup { name, parent_id } => {
-                    Some(candidate.create_group(format!("{id}-{index}"), name, parent_id)?)
+                    Some(candidate.create_group(format!("{id}-{index}"), name, parent_id, None)?)
+                }
+                Edit::CreateFrame {
+                    name,
+                    parent_id,
+                    frame,
+                } => Some(candidate.create_group(
+                    format!("{id}-{index}"),
+                    name,
+                    parent_id,
+                    Some(frame),
+                )?),
+                Edit::SetFrame { id, frame } => {
+                    candidate.set_frame(&id, frame)?;
+                    Some(id)
                 }
                 Edit::SetLayerParent { id, parent_id } => {
                     candidate.move_layer_node(&id, parent_id.as_deref())?;
