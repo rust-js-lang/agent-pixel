@@ -1,4 +1,6 @@
-//! Artboard dimensions and containment rules shared by both runtimes.
+/*! Shared document rules for the worker and native server. */
+pub mod scene;
+
 pub const BOARD_WIDTH: i32 = 480;
 pub const BOARD_HEIGHT: i32 = 600;
 

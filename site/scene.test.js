@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { fitsBoard } from "../core/src/lib.js";
-import { initial, restore } from "./scene.js";
+import { Scene, workerCommand } from "../core/src/scene.js";
 
 test("compiled bounds include edges and reject overflow", () => {
   expect(fitsBoard(0, 0, 480, 600)).toBe(true);
@@ -11,6 +11,9 @@ test("compiled bounds include edges and reject overflow", () => {
 });
 
 test("the poster round-trips and duplicate identities are rejected", () => {
-  expect(restore(JSON.parse(JSON.stringify(initial)))).toEqual(initial);
-  expect(() => restore({version: 1, layers: [initial.layers[0], initial.layers[0]]})).toThrow("Duplicate");
+  const scene = Scene.poster();
+  const restore = input => workerCommand(scene, "restore", JSON.stringify(input), "");
+  expect(JSON.parse(restore(scene)._0).scene).toEqual(scene);
+  expect(restore({ version: 1, layers: [scene.layers[0], scene.layers[0]] }))
+    .toEqual({ TAG: "Err", _0: "Duplicate layer ID." });
 });
