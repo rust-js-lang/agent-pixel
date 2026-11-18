@@ -38,7 +38,10 @@ test("a stale tab saves a separate recovery project without overwriting the newe
   expect((await patch(stale, 155)).isError).toBe(true);
   const status = await stale.webmcp.callTool("get_save_status");
   expect(status).toMatchObject({ state: "conflict", recovery: { title: "Recovery — Orbit study" } });
-  await stale.getByRole("link", { name: "Open recovery project" }).click();
+  await Promise.all([
+    stale.waitForURL(url => url.searchParams.get("project") === status.recovery.id),
+    stale.getByRole("link", { name: "Open recovery project" }).click(),
+  ]);
   await expect(stale.locator("#agent")).toHaveText("WebMCP tools ready");
   expect(await satelliteX(stale)).toBe(155);
 
