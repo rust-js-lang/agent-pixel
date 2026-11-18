@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 const dashboardTools = ["create_project", "list_projects", "open_project"];
-const editorTools = ["edit_layer", "read_design"];
+const editorTools = ["edit_layer", "insert_component", "list_components", "read_design"];
 
 async function expectTools(page, names) {
   await expect.poll(async () => (await page.webmcp.tools()).map(tool => tool.name).sort()).toEqual(names);

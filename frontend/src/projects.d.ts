@@ -28,6 +28,8 @@ export function list(): [
 
 export function find(id: string): Project | null | undefined;
 
+export function canopyLibrary(): Project;
+
 export function route(): [
     string,
     boolean

@@ -49,6 +49,13 @@ pub struct Patch {
     pub font_size: Option<i32>,
 }
 
+#[derive(Deserialize, Serialize)]
+pub struct ComponentInsert {
+    pub layers: Vec<Layer>,
+    pub x: i32,
+    pub y: i32,
+}
+
 impl Layer {
     fn orbit(id: &str, x: i32, y: i32, size: i32, fill: &str) -> Self {
         Self {
@@ -138,6 +145,44 @@ impl Scene {
         Ok(())
     }
 
+    fn insert_component(
+        &mut self,
+        mut insert: ComponentInsert,
+        prefix: &str,
+    ) -> Result<Vec<String>, &'static str> {
+        if insert.layers.is_empty() {
+            return Err("Cannot insert an empty component.");
+        }
+        if insert.layers.len() > MAX_LAYERS - self.layers.len() {
+            return Err("Layer limit reached.");
+        }
+        let (mut left, mut top, mut right, mut bottom) = (BOARD_WIDTH, BOARD_HEIGHT, 0, 0);
+        for layer in &insert.layers {
+            layer.validate()?;
+            left = left.min(layer.x);
+            top = top.min(layer.y);
+            right = right.max(layer.x + layer.width);
+            bottom = bottom.max(layer.y + layer.height);
+        }
+        if !fits_board(insert.x, insert.y, right - left, bottom - top) {
+            return Err("Keep the entire component inside the artboard.");
+        }
+        let mut ids = Vec::with_capacity(insert.layers.len());
+        for (index, layer) in insert.layers.iter_mut().enumerate() {
+            layer.id = format!("{prefix}-{index}");
+            layer.x = insert.x + (layer.x - left);
+            layer.y = insert.y + (layer.y - top);
+            ids.push(layer.id.clone());
+        }
+        let previous = self.layers.len();
+        self.layers.extend(insert.layers);
+        if let Err(error) = self.validate() {
+            self.layers.truncate(previous);
+            return Err(error);
+        }
+        Ok(ids)
+    }
+
     pub fn edit(&mut self, patch: Patch, new_id: String) -> Result<String, &'static str> {
         let Patch {
             id,
@@ -225,6 +270,8 @@ pub struct Design {
     pub scene: Scene,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub edited: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inserted: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -239,6 +286,7 @@ pub fn worker_command(
     input: &str,
     id: String,
 ) -> Result<String, String> {
+    let mut inserted = None;
     let edited = match command {
         "read" => None,
         "restore" => {
@@ -253,6 +301,14 @@ pub fn worker_command(
                 serde_json::from_str(input).map_err(|_| "Specify valid shape properties.")?;
             Some(scene.edit(patch, id)?)
         }
+        "insert" => {
+            let component =
+                serde_json::from_str(input).map_err(|_| "Specify a valid component.")?;
+            let ids = scene.insert_component(component, &id)?;
+            let selected = ids.first().cloned();
+            inserted = Some(ids);
+            selected
+        }
         _ => return Err("Unknown command.".into()),
     };
     let design = Design {
@@ -262,6 +318,7 @@ pub fn worker_command(
             height: BOARD_HEIGHT,
         },
         edited,
+        inserted,
     };
     serde_json::to_string(&design).map_err(|error| error.to_string())
 }

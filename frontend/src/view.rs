@@ -43,7 +43,7 @@ fn percent(value: i32, extent: i32) -> String {
 fn label(layer: &Layer) -> String {
     if let Some(text) = &layer.text {
         text.clone()
-    } else if layer.id.len() == 36 {
+    } else if layer.id.len() == 36 || layer.id.as_bytes().get(36) == Some(&b'-') {
         format!("{} {}", layer.kind, &layer.id[..4])
     } else {
         layer.id.replace('-', " ")
@@ -240,6 +240,38 @@ fn inspector(layer: &Layer, version: u32) -> JSX::Element {
     }
 }
 
+fn component_picker(disabled: bool) -> JSX::Element {
+    let options = crate::components::variants().iter().map(|variant| jsx! {
+        <option key={variant.id} value={variant.id}>{format!("{} · {}", variant.family, variant.name)}</option>
+    }).collect::<Vec<_>>();
+    jsx! {
+        <details className="component-library">
+            <summary>"Canopy UI components"</summary>
+            <form action={|data: &webapi::FormData| {
+                use webapi::FormDataEntryValue::Str;
+                if let (Some(Str(id)), Some(Str(x)), Some(Str(y))) = (data.get("variant"), data.get("x"), data.get("y")) {
+                    if let (Ok(x), Ok(y)) = (x.parse::<i32>(), y.parse::<i32>()) {
+                        let id = id.to_string();
+                        js::spawn(Box::new(async move {
+                            if let Err(error) = crate::place_component(&id, x, y).await {
+                                crate::status(error);
+                            }
+                        }));
+                    }
+                }
+            }}>
+                <label htmlFor="component-variant">"Component variant"</label>
+                <select id="component-variant" name="variant">{options}</select>
+                <div className="component-position">
+                    <label>"X"<input aria-label="Component X" name="x" type="number" min={0} max={BOARD_WIDTH - 1} defaultValue={40} required /></label>
+                    <label>"Y"<input aria-label="Component Y" name="y" type="number" min={0} max={BOARD_HEIGHT - 1} defaultValue={40} required /></label>
+                </div>
+                <button type="submit" disabled={disabled}>"Insert component"</button>
+            </form>
+        </details>
+    }
+}
+
 pub(crate) fn editor(editor: &Editor) -> JSX::Element {
     let layers = editor
         .document
@@ -290,6 +322,7 @@ pub(crate) fn editor(editor: &Editor) -> JSX::Element {
                 </section>
                 <aside className="properties">
                     <div className="eyebrow">"INSPECTOR"</div>
+                    {component_picker(disabled)}
                     {properties}<span id="agent">{editor.agent.clone()}</span>
                     {editor.server.then(|| jsx! {
                         <div id="server">

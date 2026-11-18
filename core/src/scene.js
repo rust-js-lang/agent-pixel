@@ -11,9 +11,11 @@ import {
   $index,
   $json,
   $position,
+  $roomFor,
   $stripPrefix,
   $toJson,
   $trim,
+  $truncate,
   $utf8Bytes,
 } from "@rust-js/std";
 
@@ -215,6 +217,34 @@ export function patchSerialize_serialize(patch, json) {
   json.endObject();
 }
 
+export function componentInsertDeserialize_deserialize(json) {
+  return json.struct(
+    "struct ComponentInsert",
+    [
+      ["layers", $json.vec(layerDeserialize_deserialize)],
+      ["x", $json.i32],
+      ["y", $json.i32],
+    ],
+    ([layers, x, y]) => ({ layers, x, y }),
+  );
+}
+
+export function componentInsertSerialize_serialize(componentInsert, json) {
+  json.beginObject();
+  json.key("layers");
+  json.beginArray();
+  for (const item of componentInsert.layers) {
+    json.element();
+    layerSerialize_serialize(item, json);
+  }
+  json.endArray();
+  json.key("x");
+  json.int(componentInsert.x);
+  json.key("y");
+  json.int(componentInsert.y);
+  json.endObject();
+}
+
 const Layer = {
   orbit(id, x, y, size, fill) {
     return {
@@ -311,6 +341,57 @@ export const Scene = {
     return { TAG: "Ok" };
   },
 
+  insertComponent(scene, insert, prefix) {
+    if (insert.layers.length === 0) {
+      return { TAG: "Err", _0: "Cannot insert an empty component." };
+    }
+    if (insert.layers.length > (MAX_LAYERS - scene.layers.length) >>> 0) {
+      return { TAG: "Err", _0: "Layer limit reached." };
+    }
+    let left = BOARD_WIDTH;
+    let top = BOARD_HEIGHT;
+    let right = 0;
+    let bottom = 0;
+    const iter = insert.layers.values();
+    let ids;
+    while (true) {
+      const layer = iter.next().value;
+      if (layer != null) {
+        const result = Layer.validate(layer);
+        if (result.TAG === "Err") {
+          return result;
+        }
+        left = Math.min(left, layer.x);
+        top = Math.min(top, layer.y);
+        right = Math.max(right, (layer.x + layer.width) | 0);
+        bottom = Math.max(bottom, (layer.y + layer.height) | 0);
+      } else if (!fitsBoard(insert.x, insert.y, (right - left) | 0, (bottom - top) | 0)) {
+        return { TAG: "Err", _0: "Keep the entire component inside the artboard." };
+      } else {
+        $roomFor(insert.layers.length, 12);
+        ids = [];
+        for (const [index, layer] of insert.layers.entries()) {
+          layer.id = `${prefix}-${index}`;
+          layer.x = (insert.x + ((layer.x - left) | 0)) | 0;
+          layer.y = (insert.y + ((layer.y - top) | 0)) | 0;
+          ids.push(layer.id);
+        }
+        const previous = scene.layers.length;
+        const result = scene.layers;
+        for (let i = 0; i < insert.layers.length; i++) {
+          result.push(insert.layers[i]);
+        }
+        const validate = Scene.validate(scene);
+        if (validate.TAG === "Err") {
+          $truncate(scene.layers, previous);
+          return { TAG: "Err", _0: validate._0 };
+        }
+        break;
+      }
+    }
+    return { TAG: "Ok", _0: ids };
+  },
+
   edit(scene, patch, newId) {
     const { id, kind, x, y, width, height, fill, text, fontSize } = patch;
     if (
@@ -402,6 +483,15 @@ export function designSerialize_serialize(design, json) {
     json.key("edited");
     json.string(design.edited);
   }
+  if (design.inserted != null) {
+    json.key("inserted");
+    json.beginArray();
+    for (const item of design.inserted) {
+      json.element();
+      json.string(item);
+    }
+    json.endArray();
+  }
   json.endObject();
 }
 
@@ -412,8 +502,9 @@ export function designDeserialize_deserialize(json) {
       ["board", dimensionsDeserialize_deserialize],
       ["scene", sceneDeserialize_deserialize],
       ["edited", $json.option($json.string)],
+      ["inserted", $json.option($json.vec($json.string))],
     ],
-    ([board, scene, edited]) => ({ board, scene, edited }),
+    ([board, scene, edited, inserted]) => ({ board, scene, edited, inserted }),
   );
 }
 
@@ -438,6 +529,7 @@ export function dimensionsDeserialize_deserialize(json) {
 }
 
 export function workerCommand(scene, command, input, id) {
+  let inserted;
   let edited;
   switch (command) {
     case "read":
@@ -459,18 +551,36 @@ export function workerCommand(scene, command, input, id) {
       break;
     }
     case "edit": {
-      const result$2 = $fromJson(input, patchDeserialize_deserialize);
-      const result =
-        result$2.TAG === "Err" ? { TAG: "Err", _0: "Specify valid shape properties." } : result$2;
-      if (result.TAG === "Err") {
-        return result;
-      }
-      const patch = result._0;
-      const result$1 = Scene.edit(scene, patch, id);
+      const result = $fromJson(input, patchDeserialize_deserialize);
+      const result$1 =
+        result.TAG === "Err" ? { TAG: "Err", _0: "Specify valid shape properties." } : result;
       if (result$1.TAG === "Err") {
         return result$1;
       }
-      edited = result$1._0;
+      const patch = result$1._0;
+      const result$2 = Scene.edit(scene, patch, id);
+      if (result$2.TAG === "Err") {
+        return result$2;
+      }
+      edited = result$2._0;
+      break;
+    }
+    case "insert": {
+      const result$2 = $fromJson(input, componentInsertDeserialize_deserialize);
+      const result =
+        result$2.TAG === "Err" ? { TAG: "Err", _0: "Specify a valid component." } : result$2;
+      if (result.TAG === "Err") {
+        return result;
+      }
+      const component = result._0;
+      const result$1 = Scene.insertComponent(scene, component, id);
+      if (result$1.TAG === "Err") {
+        return result$1;
+      }
+      const ids = result$1._0;
+      const selected = ids[0];
+      inserted = ids;
+      edited = selected;
       break;
     }
     default:
@@ -483,6 +593,7 @@ export function workerCommand(scene, command, input, id) {
       height: BOARD_HEIGHT,
     },
     edited,
+    inserted,
   };
   const result = $toJson(design, designSerialize_serialize, false);
   return result.TAG === "Err" ? { TAG: "Err", _0: $displayJsonError(result._0) } : result;

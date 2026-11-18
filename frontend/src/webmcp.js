@@ -3,7 +3,9 @@
 /** Browser bindings for the experimental WebMCP model context. */
 import { Project, projectSerialize_serialize } from "./projects.js";
 import * as Projects from "./projects.js";
-import { editDesign, readDesign, renderDashboard } from "./lib.js";
+import { variantSerialize_serialize } from "./components.js";
+import * as Components from "./components.js";
+import { editDesign, placeComponent, readDesign, renderDashboard } from "./lib.js";
 import {
   $displayJsonError,
   $fromJson,
@@ -29,8 +31,71 @@ const EDIT_SCHEMA = `{
     }
 }`;
 
+const INSERT_SCHEMA = `{
+    "type":"object","required":["id","x","y"],"additionalProperties":false,
+    "properties":{
+        "id":{"type":"string","description":"Variant ID from list_components"},
+        "x":{"type":"integer","minimum":0,"description":"Left of the component in artboard pixels"},
+        "y":{"type":"integer","minimum":0,"description":"Top of the component in artboard pixels"}
+    }
+}`;
+
+function insertComponentDeserialize_deserialize(json) {
+  return json.struct(
+    "struct InsertComponent",
+    [
+      ["id", $json.string],
+      ["x", $json.i32],
+      ["y", $json.i32],
+    ],
+    ([id, x, y]) => ({ id, x, y }),
+    { deny: true },
+  );
+}
+
 export async function registerEditorTools() {
   return await register([
+    {
+      name: "list_components",
+      description: "List the Canopy UI component families and variant IDs available for insertion.",
+      inputSchema: parse(READ_SCHEMA),
+      annotations: { readOnlyHint: true },
+      async execute() {
+        const result = $toJson(
+          Components.variants(),
+          (value, json) => {
+            json.beginArray();
+            for (const item of value) {
+              json.element();
+              variantSerialize_serialize(item, json);
+            }
+            json.endArray();
+          },
+          false,
+        );
+        return toolResult(
+          result.TAG === "Err" ? { TAG: "Err", _0: $displayJsonError(result._0) } : result,
+        );
+      },
+    },
+    {
+      name: "insert_component",
+      description:
+        "Insert an editable copy of a Canopy UI variant at an artboard position. Returns the new layer IDs and scene.",
+      inputSchema: parse(INSERT_SCHEMA),
+      async execute(input) {
+        const value = decode(
+          input,
+          "Provide a component variant ID and integer x and y coordinates.",
+          insertComponentDeserialize_deserialize,
+        );
+        const result =
+          value.TAG === "Ok"
+            ? await placeComponent(value._0.id, value._0.x, value._0.y)
+            : { TAG: "Err", _0: value._0 };
+        return toolResult(result);
+      },
+    },
     {
       name: "read_design",
       description: "Read the artboard and its ordered layers.",
@@ -137,11 +202,11 @@ function dashboardTool(name, description, schema, readOnly, action) {
     description,
     inputSchema: parse(schema),
     annotations: readOnly ? { readOnlyHint: true } : undefined,
-    execute: async (args) => dashboardResponse(action(args)),
+    execute: async (args) => toolResult(action(args)),
   };
 }
 
-function dashboardResponse(result) {
+function toolResult(result) {
   if (result.TAG === "Ok") {
     return parse(result._0);
   } else {

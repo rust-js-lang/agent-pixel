@@ -68,10 +68,7 @@ pub fn list() -> (Vec<Project>, Option<String>) {
             id: CURRENT.into(),
             title: "Current — Home energy".into(),
         },
-        Project {
-            id: CANOPY.into(),
-            title: "Canopy UI — Design system".into(),
-        },
+        canopy_library(),
     ];
     let legacy = blank_mockup();
     if legacy
@@ -97,6 +94,13 @@ pub fn find(id: &str) -> Option<Project> {
         Some(blank_mockup())
     } else {
         list().0.into_iter().find(|project| project.id == id)
+    }
+}
+
+pub fn canopy_library() -> Project {
+    Project {
+        id: CANOPY.into(),
+        title: "Canopy UI — Design system".into(),
     }
 }
 

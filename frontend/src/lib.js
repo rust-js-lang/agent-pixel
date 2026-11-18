@@ -7,6 +7,7 @@ import { Project } from "./projects.js";
 import * as Projects from "./projects.js";
 import { createRoot } from "react-dom/client";
 import {
+  componentInsertSerialize_serialize,
   designDeserialize_deserialize,
   designSerialize_serialize,
   documentDeserialize_deserialize,
@@ -15,6 +16,7 @@ import {
   sceneSerialize_serialize,
 } from "../../core/src/scene.js";
 import * as Browser from "./browser.js";
+import * as Components from "./components.js";
 import * as Dashboard from "./dashboard.jsx";
 import * as View from "./view.jsx";
 import * as Webmcp from "./webmcp.js";
@@ -249,10 +251,30 @@ export async function readDesign() {
 }
 
 export async function editDesign(json) {
+  return await changeDesign("edit", json);
+}
+
+export async function placeComponent(id, x, y) {
+  const result = Components.placement(id, x, y);
+  if (result.TAG === "Err") {
+    return result;
+  }
+  const placement = result._0;
+  const result$1 = $toJson(placement, componentInsertSerialize_serialize, false);
+  const result$2 =
+    result$1.TAG === "Err" ? { TAG: "Err", _0: $displayJsonError(result$1._0) } : result$1;
+  if (result$2.TAG === "Err") {
+    return result$2;
+  }
+  const json = result$2._0;
+  return await changeDesign("insert", json);
+}
+
+async function changeDesign(command, json) {
   if ($withBorrow(editor, (editor) => editor.busy, true)) {
     return { TAG: "Err", _0: "Wait for the document server operation." };
   }
-  const result = await request("edit", json);
+  const result = await request(command, json);
   if (result.TAG === "Err") {
     return result;
   }

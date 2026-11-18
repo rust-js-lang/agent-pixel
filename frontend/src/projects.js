@@ -138,10 +138,7 @@ export function list() {
       id: CURRENT,
       title: "Current — Home energy",
     },
-    {
-      id: CANOPY,
-      title: "Canopy UI — Design system",
-    },
+    canopyLibrary(),
   ];
   const legacy = blankMockup();
   const result = Project.load(legacy, false);
@@ -162,6 +159,13 @@ export function list() {
 
 export function find(id) {
   return id === WEB_APP ? blankMockup() : list()[0].find((project) => project.id === id);
+}
+
+export function canopyLibrary() {
+  return {
+    id: CANOPY,
+    title: "Canopy UI — Design system",
+  };
 }
 
 function blankMockup() {

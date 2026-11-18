@@ -53,10 +53,17 @@ export interface Patch {
     fontSize?: number | undefined;
 }
 
+export interface ComponentInsert {
+    layers: Layer[];
+    x: number;
+    y: number;
+}
+
 export interface Design {
     board: Dimensions;
     scene: Scene;
     edited?: string | undefined;
+    inserted?: string[] | undefined;
 }
 
 export interface Dimensions {

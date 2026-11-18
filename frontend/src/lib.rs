@@ -1,4 +1,5 @@
 mod browser;
+mod components;
 mod dashboard;
 mod projects;
 mod transport;
@@ -170,10 +171,20 @@ async fn read_design() -> Result<String, String> {
 }
 
 async fn edit_design(json: String) -> Result<String, String> {
+    change_design("edit", &json).await
+}
+
+async fn place_component(id: &str, x: i32, y: i32) -> Result<String, String> {
+    let placement = components::placement(id, x, y)?;
+    let json = serde_json::to_string(&placement).map_err(|error| error.to_string())?;
+    change_design("insert", &json).await
+}
+
+async fn change_design(command: &str, json: &str) -> Result<String, String> {
     if EDITOR.with_borrow(|editor| editor.busy) {
         return Err("Wait for the document server operation.".into());
     }
-    let design = request("edit", &json).await?;
+    let design = request(command, json).await?;
     let body = serde_json::to_string(&design).map_err(|error| error.to_string())?;
     EDITOR.with_borrow_mut(|editor| {
         editor.select(design.edited);

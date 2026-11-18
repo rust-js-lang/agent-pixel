@@ -73,3 +73,20 @@ header a + a { margin-left: 0; }
   .project-heading { align-items: stretch; }
   .create-project { flex-basis: 100%; }
 }
+
+.component-library {
+  margin-top: 15px;
+  padding: 8px;
+  border: 1px solid #d1dbcc;
+  border-radius: 6px;
+  background: #edf2e9;
+  font-size: 12px;
+}
+.component-library summary { font-weight: 600; cursor: pointer; }
+.component-library form { display: grid; grid-template-columns: minmax(0, 1fr); margin-top: 10px; }
+.component-library form > label { border: 0; padding: 0; }
+.component-library select { width: 100%; padding: 5px; font: inherit; color: inherit; background: white; }
+.component-position { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.component-position label { min-width: 0; }
+.component-library button { padding: 6px; border: 0; border-radius: 4px; color: white; background: #263c2d; }
+.component-library button:disabled { opacity: .55; }

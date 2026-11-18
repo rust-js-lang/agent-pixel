@@ -50,8 +50,47 @@ const EDIT_SCHEMA: &str = r##"{
     }
 }"##;
 
+const INSERT_SCHEMA: &str = r#"{
+    "type":"object","required":["id","x","y"],"additionalProperties":false,
+    "properties":{
+        "id":{"type":"string","description":"Variant ID from list_components"},
+        "x":{"type":"integer","minimum":0,"description":"Left of the component in artboard pixels"},
+        "y":{"type":"integer","minimum":0,"description":"Top of the component in artboard pixels"}
+    }
+}"#;
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct InsertComponent {
+    id: String,
+    x: i32,
+    y: i32,
+}
+
 pub async fn register_editor_tools() -> Result<bool, &'static JsError> {
     register(vec![
+        Tool {
+            name: "list_components",
+            description: "List the Canopy UI component families and variant IDs available for insertion.",
+            input_schema: parse(READ_SCHEMA),
+            annotations: Some(Annotations { read_only_hint: true }),
+            execute: Box::new(|_| js::promise(async {
+                tool_result(serde_json::to_string(crate::components::variants()).map_err(|error| error.to_string()))
+            })),
+        },
+        Tool {
+            name: "insert_component",
+            description: "Insert an editable copy of a Canopy UI variant at an artboard position. Returns the new layer IDs and scene.",
+            input_schema: parse(INSERT_SCHEMA),
+            annotations: None,
+            execute: Box::new(|input| js::promise(async move {
+                let result = match decode(input, "Provide a component variant ID and integer x and y coordinates.") {
+                    Ok(InsertComponent { id, x, y }) => crate::place_component(&id, x, y).await,
+                    Err(error) => Err(error),
+                };
+                tool_result(result)
+            })),
+        },
         Tool {
             name: "read_design",
             description: "Read the artboard and its ordered layers.",
@@ -139,11 +178,11 @@ fn dashboard_tool(
         annotations: read_only.then_some(Annotations {
             read_only_hint: true,
         }),
-        execute: Box::new(move |args| js::promise(async move { dashboard_response(action(args)) })),
+        execute: Box::new(move |args| js::promise(async move { tool_result(action(args)) })),
     }
 }
 
-fn dashboard_response(result: Result<String, String>) -> &'static Unknown {
+fn tool_result(result: Result<String, String>) -> &'static Unknown {
     match result {
         Ok(body) => parse(&body),
         Err(message) => parse(

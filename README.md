@@ -73,3 +73,9 @@ Open the Agent Pixel home page in a WebMCP-enabled browser. Discover the dashboa
 - `open_project` takes `{ id }` and navigates the current tab to that project's editor. Wait for navigation, discover the editor tools, then call `read_design` or `edit_layer`.
 
 The [dashboard WebMCP test](e2e/dashboard-webmcp.spec.js) exercises the handoff and verifies that the project and edits survive reopening.
+
+## Reuse Canopy UI components
+
+In an editor, expand **Canopy UI components**, choose a variant, set its position, and select **Insert component**. New insertions use the currently saved Canopy UI artboard in this browser. Each insertion creates independent, editable layers in the destination project.
+
+An agent can call `list_components` for the variant IDs, then call `insert_component` with `{ id, x, y }`. The coordinates place the variant's top-left corner in artboard pixels. The result includes the new layer IDs and the updated scene.
