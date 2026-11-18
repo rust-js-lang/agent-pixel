@@ -2,5 +2,11 @@
   "name": "agent-pixel",
   "private": true,
   "type": "module",
-  "scripts": { "build": "bun build.ts" }
+  "scripts": {
+    "build": "bun build.ts",
+    "test:e2e": "bunx --bun playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.1"
+  }
 }

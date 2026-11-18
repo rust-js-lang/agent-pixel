@@ -77,7 +77,10 @@ async fn save(
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:4173").await?;
+    let port = std::env::var("AGENT_PIXEL_PORT")
+        .unwrap_or_else(|_| "4173".into())
+        .parse::<u16>()?;
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;
     fs::create_dir_all("data").await?;
     let document = match fs::read("data/document.json").await {
         Ok(bytes) => serde_json::from_slice(&bytes)?,
@@ -88,7 +91,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/document", get(read).put(save))
         .fallback_service(ServeDir::new("dist"))
         .with_state(Arc::new(Mutex::new(document)));
-    println!("Open http://127.0.0.1:4173/?server");
+    println!("Open http://127.0.0.1:{port}/?server");
     axum::serve(listener, app).await?;
     Ok(())
 }
