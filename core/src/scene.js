@@ -22,7 +22,7 @@ const INK = "#20231f";
 const ORANGE = "#ff5636";
 const PAPER = "#f5edda";
 
-function layerDeserialize_deserialize(json) {
+export function layerDeserialize_deserialize(json) {
   return json.struct(
     "struct Layer",
     [
@@ -38,7 +38,7 @@ function layerDeserialize_deserialize(json) {
   );
 }
 
-function layerSerialize_serialize(layer, json) {
+export function layerSerialize_serialize(layer, json) {
   json.beginObject();
   json.key("id");
   json.string(layer.id);
@@ -57,7 +57,7 @@ function layerSerialize_serialize(layer, json) {
   json.endObject();
 }
 
-function sceneDeserialize_deserialize(json) {
+export function sceneDeserialize_deserialize(json) {
   return json.struct(
     "struct Scene",
     [
@@ -68,7 +68,7 @@ function sceneDeserialize_deserialize(json) {
   );
 }
 
-function sceneSerialize_serialize(scene, json) {
+export function sceneSerialize_serialize(scene, json) {
   json.beginObject();
   json.key("version");
   json.int(scene.version);
@@ -82,7 +82,31 @@ function sceneSerialize_serialize(scene, json) {
   json.endObject();
 }
 
-function patchDeserialize_deserialize(json) {
+export function documentDeserialize_deserialize(json) {
+  return json.struct(
+    "struct Document",
+    [
+      ["revision", $json.u64],
+      ["scene", $json.option(sceneDeserialize_deserialize)],
+    ],
+    ([revision, scene]) => ({ revision, scene }),
+  );
+}
+
+export function documentSerialize_serialize(document, json) {
+  json.beginObject();
+  json.key("revision");
+  json.int(document.revision);
+  json.key("scene");
+  if (document.scene == null) {
+    json.null();
+  } else {
+    sceneSerialize_serialize(document.scene, json);
+  }
+  json.endObject();
+}
+
+export function patchDeserialize_deserialize(json) {
   return json.struct(
     "struct Patch",
     [
@@ -97,6 +121,53 @@ function patchDeserialize_deserialize(json) {
     ([id, kind, x, y, width, height, fill]) => ({ id, kind, x, y, width, height, fill }),
     { deny: true },
   );
+}
+
+export function patchSerialize_serialize(patch, json) {
+  json.beginObject();
+  json.key("id");
+  if (patch.id == null) {
+    json.null();
+  } else {
+    json.string(patch.id);
+  }
+  json.key("kind");
+  if (patch.kind == null) {
+    json.null();
+  } else {
+    json.string(patch.kind);
+  }
+  json.key("x");
+  if (patch.x == null) {
+    json.null();
+  } else {
+    json.int(patch.x);
+  }
+  json.key("y");
+  if (patch.y == null) {
+    json.null();
+  } else {
+    json.int(patch.y);
+  }
+  json.key("width");
+  if (patch.width == null) {
+    json.null();
+  } else {
+    json.int(patch.width);
+  }
+  json.key("height");
+  if (patch.height == null) {
+    json.null();
+  } else {
+    json.int(patch.height);
+  }
+  json.key("fill");
+  if (patch.fill == null) {
+    json.null();
+  } else {
+    json.string(patch.fill);
+  }
+  json.endObject();
 }
 
 const Layer = {
@@ -240,7 +311,7 @@ export const Scene = {
   },
 };
 
-function designSerialize_serialize(design, json) {
+export function designSerialize_serialize(design, json) {
   json.beginObject();
   json.key("board");
   dimensionsSerialize_serialize(design.board, json);
@@ -253,13 +324,36 @@ function designSerialize_serialize(design, json) {
   json.endObject();
 }
 
-function dimensionsSerialize_serialize(dimensions, json) {
+export function designDeserialize_deserialize(json) {
+  return json.struct(
+    "struct Design",
+    [
+      ["board", dimensionsDeserialize_deserialize],
+      ["scene", sceneDeserialize_deserialize],
+      ["edited", $json.option($json.string)],
+    ],
+    ([board, scene, edited]) => ({ board, scene, edited }),
+  );
+}
+
+export function dimensionsSerialize_serialize(dimensions, json) {
   json.beginObject();
   json.key("width");
   json.int(dimensions.width);
   json.key("height");
   json.int(dimensions.height);
   json.endObject();
+}
+
+export function dimensionsDeserialize_deserialize(json) {
+  return json.struct(
+    "struct Dimensions",
+    [
+      ["width", $json.i32],
+      ["height", $json.i32],
+    ],
+    ([width, height]) => ({ width, height }),
+  );
 }
 
 export function workerCommand(scene, command, input, id) {

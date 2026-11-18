@@ -4,9 +4,14 @@
   "type": "module",
   "scripts": {
     "build": "bun build.ts",
-    "test:e2e": "bunx --bun playwright test"
+    "test:e2e": "bunx --bun playwright test",
+    "build:rust": "cd frontend && bun ../.rust-js/tooling/cli.js build"
   },
   "devDependencies": {
     "@playwright/test": "1.65.1"
+  },
+  "dependencies": {
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
   }
 }
